@@ -1,8 +1,11 @@
 name: CI
 
+# Every push, on every branch: a branch whose state is invisible until someone
+# opens a pull request is a branch nobody can trust. Pull requests stay here for
+# the case a push cannot cover — one opened from a fork, whose commits never
+# land in this repository.
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -22,6 +25,12 @@ jobs:
     name: Tests (${{ matrix.os }}, ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
+    # Skip the pull-request run when the branch lives in this repository: its
+    # push already ran this workflow on the same commit, and two identical runs
+    # in the checks list only make a red one harder to find.
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name != github.repository
 
     strategy:
       fail-fast: false
@@ -72,6 +81,12 @@ jobs:
     name: Engine imports with no dependencies
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Skip the pull-request run when the branch lives in this repository: its
+    # push already ran this workflow on the same commit, and two identical runs
+    # in the checks list only make a red one harder to find.
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - name: Checkout
         uses: actions/checkout@v7
