@@ -1,14 +1,19 @@
-"""Turn IMAGE_IR into an H3 prompt without adding anything to it.
+"""Turn IMAGE_IR into a grounded prompt without adding anything to it.
 
 The tiers exist so a prompt can be inspected at the altitude the mistake would
 live at:
 
-H1  the core — who or what the image shows, how they are posed, where they look.
-H2  the grounded expansion — wardrobe, scene, lighting, camera; the attributes
-    that decide whether a generation still looks like the reference.
-H3  the render-ready prompt — H1 and H2, plus continuity wording that says the
-    observed state holds, plus whatever micro-motion rule 6 permits, plus the
-    non-visual directives (duration, format, style) the author supplies.
+CORE    who or what the image shows, how they are posed, where they look.
+DETAIL  the grounded expansion — wardrobe, scene, lighting, camera; the
+        attributes that decide whether a generation still looks like the
+        reference.
+FINAL   the render-ready prompt — CORE and DETAIL, plus continuity wording that
+        says the observed state holds, plus whatever micro-motion rule 6
+        permits, plus the non-visual directives the author supplies.
+
+The tiers were once called H1/H2/H3. They are not: "H3" is MiniMax H3, the
+video model this project targets, and a field named h3_prompt that is not an H3
+prompt is a trap for the next reader. The real H3 format lives in h3.py.
 
 Composition is subtractive by construction. Every clause is built from a fact's
 own recorded wording; the composer's only freedom is which facts to include,
@@ -33,8 +38,8 @@ from .motion import MotionPlan, MotionRejection, plan_motion
 from .schema import ImageIR, SECTION_ORDER, tokenize
 
 # Which subject attributes carry the core of the image, and in what order they
-# read. Anything else in the subject section follows, alphabetically, in H2.
-H1_SLOTS: tuple[str, ...] = ("identity", "subject", "description", "count", "pose", "posture", "stance", "gaze")
+# read. Anything else in the subject section follows, alphabetically, in DETAIL.
+CORE_SLOTS: tuple[str, ...] = ("identity", "subject", "description", "count", "pose", "posture", "stance", "gaze")
 
 # Attributes whose value is a state that must be described as holding, not as
 # arriving. These are exactly the attributes a motion prompt tends to animate.
@@ -71,9 +76,9 @@ class Clause:
 
 @dataclass
 class Composition:
-    h1: str = ""
-    h2: str = ""
-    h3: str = ""
+    core: str = ""
+    detail: str = ""
+    final: str = ""
     negative: str = ""
     clauses: list[Clause] = field(default_factory=list)
     motions: tuple[MotionPlan, ...] = ()
@@ -83,7 +88,7 @@ class Composition:
 
     def trace(self) -> str:
         """Clause-by-clause provenance: rule 9 made auditable before the fact."""
-        lines = ["H3 prompt trace", "=" * 15, ""]
+        lines = ["FINAL prompt trace", "=" * 18, ""]
         width = max((len(c.kind) for c in self.clauses), default=11)
         for clause in self.clauses:
             source = ", ".join(clause.paths) if clause.paths else "—"
@@ -145,7 +150,7 @@ def _label(section: str, slot: str, text: str, style: str) -> str:
     IR. Sections that already carry a connective ("wearing ...", "in ...") are
     left bare: there the values are nouns and the connective frames them.
     """
-    if style != "sentence" or section != "subject" or slot in H1_SLOTS:
+    if style != "sentence" or section != "subject" or slot in CORE_SLOTS:
         return text
     label = slot.replace("_", " ")
     if set(tokenize(label)).issubset(set(tokenize(text))):
@@ -198,11 +203,21 @@ def _continuity_clauses(ir: ImageIR, used: set[str]) -> list[Clause]:
 
 
 def _negative(ir: ImageIR) -> str:
-    """Wordings the IR rules out, offered as a negative prompt.
+    """Wordings the IR positively rules out, offered as a negative prompt.
 
-    Every entry is derived: the other poles of a group the IR pinned, and the
-    specific readings an uncertain attribute must not collapse into. Nothing
-    here is a taste preference, so it stays true for any image the IR describes.
+    A negative prompt is an assertion: it says this is not in the picture. Only
+    two things in an IR support that claim — an attribute recorded as absent
+    (looked for, not there), and the unpinned poles of a group the IR pinned
+    (gaze observed toward camera means it is not averted).
+
+    Uncertain candidates are deliberately NOT here, and this is the correction
+    that matters most. "material is uncertain, possibly satin or silk" means the
+    reading could not be made; it does not mean the fabric is not satin. Putting
+    those candidates in a negative prompt turns "we could not tell" into "it is
+    definitely not that" — inventing an exclusion the image never supported, and
+    steering generation away from what may well be the right answer. The
+    candidates stay in the IR for the guard, which uses them to stop a prompt
+    from *asserting* one; refusing to assert is not the same as denying.
     """
     observed = [(f.path, (f.value or "").lower()) for f in ir.observed() if f.value]
     out: list[str] = []
@@ -219,9 +234,7 @@ def _negative(ir: ImageIR) -> str:
             if index not in pinned:
                 out.append(pole[0])
     for fact in ir.facts:
-        if fact.is_uncertain:
-            out.extend(fact.forbidden_specifics())
-        elif fact.is_absent:
+        if fact.is_absent:
             out.append(fact.slot.replace("_", " "))
     return ", ".join(dict.fromkeys(term for term in out if term))
 
@@ -235,10 +248,10 @@ def compose(
     directives: str = "",
     style: str = "sentence",
 ) -> Composition:
-    """Build H1, H2 and H3 from ``ir``, then audit the result against ``ir``.
+    """Build CORE, DETAIL and FINAL from ``ir``, then audit the result against it.
 
     ``directives`` is the one input that is not traced to a fact: duration,
-    aspect, codec, render style. It is kept verbatim in H3 and marked as a
+    aspect, codec, render style. It is kept verbatim in FINAL and marked as a
     directive in the trace, so a reader can see at a glance which part of the
     prompt is not answerable to the image.
 
@@ -254,22 +267,22 @@ def compose(
     used: set[str] = set()
     clauses: list[Clause] = []
 
-    subject_slots = tuple(s for s in H1_SLOTS if ir.get(f"subject.{s}"))
-    h1_clauses = _section_clauses(ir, "subject", subject_slots, style)
-    clauses.extend(h1_clauses)
+    subject_slots = tuple(s for s in CORE_SLOTS if ir.get(f"subject.{s}"))
+    core_clauses = _section_clauses(ir, "subject", subject_slots, style)
+    clauses.extend(core_clauses)
 
-    h2_groups: list[tuple[str, list[Clause]]] = []
+    detail_groups: list[tuple[str, list[Clause]]] = []
     rest = tuple(sorted({f.slot for f in ir.section("subject")} - set(subject_slots)))
     subject_rest = _section_clauses(ir, "subject", rest, style)
     if subject_rest:
-        h2_groups.append(("subject", subject_rest))
+        detail_groups.append(("subject", subject_rest))
     for section in ir.sections():
         if section == "subject":
             continue
         group = _section_clauses(ir, section, None, style)
         if group:
-            h2_groups.append((section, group))
-    for _section, group in h2_groups:
+            detail_groups.append((section, group))
+    for _section, group in detail_groups:
         clauses.extend(group)
 
     for clause in clauses:
@@ -283,8 +296,8 @@ def compose(
             pieces.append(f"{connective} {body}".strip() if connective else body)
         return ", ".join(p for p in pieces if p)
 
-    h1 = render([("subject", h1_clauses)])
-    h2 = render(h2_groups)
+    core = render([("subject", core_clauses)])
+    detail = render(detail_groups)
 
     accepted, rejected = plan_motion(ir, tuple(motions), require_anchor=require_anchor)
 
@@ -304,20 +317,20 @@ def compose(
         tail.append(Clause(text=directive_text, paths=(), kind="directive"))
 
     clauses.extend(tail)
-    h3_body = ", ".join(part for part in (h1, h2, ", ".join(c.text for c in tail)) if part)
-    h3 = (h3_body.rstrip(", ") + ".") if h3_body else ""
+    final_body = ", ".join(part for part in (core, detail, ", ".join(c.text for c in tail)) if part)
+    final = (final_body.rstrip(", ") + ".") if final_body else ""
 
     composition = Composition(
-        h1=h1,
-        h2=h2,
-        h3=h3,
+        core=core,
+        detail=detail,
+        final=final,
         negative=_negative(ir),
         clauses=clauses,
         motions=accepted,
         rejected_motions=rejected,
         unused_paths=tuple(sorted(f.path for f in ir.facts if f.path not in used)),
     )
-    composition.self_audit = audit(ir, h3, require_anchor=require_anchor)
+    composition.self_audit = audit(ir, final, require_anchor=require_anchor)
     return composition
 
 

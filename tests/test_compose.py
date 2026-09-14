@@ -27,30 +27,30 @@ EXAMPLE = parse_dsl(
 
 
 class TierTests(unittest.TestCase):
-    def test_h1_holds_the_core_and_nothing_else(self):
-        h1 = compose(EXAMPLE).h1
-        self.assertIn("a woman", h1)
-        self.assertIn("seated", h1)
-        self.assertIn("toward camera", h1)
-        self.assertNotIn("blouse", h1)
-        self.assertNotIn("backdrop", h1)
+    def test_core_holds_the_core_and_nothing_else(self):
+        core = compose(EXAMPLE).core
+        self.assertIn("a woman", core)
+        self.assertIn("seated", core)
+        self.assertIn("toward camera", core)
+        self.assertNotIn("blouse", core)
+        self.assertNotIn("backdrop", core)
 
-    def test_h2_holds_the_attributes_the_core_left_out(self):
-        h2 = compose(EXAMPLE).h2
-        self.assertIn("smooth blouse", h2)
-        self.assertIn("a plain studio backdrop", h2)
-        self.assertIn("medium shot", h2)
-        self.assertNotIn("a woman", h2)
+    def test_detail_holds_the_attributes_the_core_left_out(self):
+        detail = compose(EXAMPLE).detail
+        self.assertIn("smooth blouse", detail)
+        self.assertIn("a plain studio backdrop", detail)
+        self.assertIn("medium shot", detail)
+        self.assertNotIn("a woman", detail)
 
-    def test_h3_contains_both_tiers(self):
+    def test_final_contains_both_tiers(self):
         result = compose(EXAMPLE)
-        self.assertIn("a woman", result.h3)
-        self.assertIn("smooth blouse", result.h3)
-        self.assertTrue(result.h3.endswith("."))
+        self.assertIn("a woman", result.final)
+        self.assertIn("smooth blouse", result.final)
+        self.assertTrue(result.final.endswith("."))
 
     def test_an_empty_ir_composes_to_nothing_rather_than_something(self):
         result = compose(parse_dsl(""))
-        self.assertEqual(result.h3, "")
+        self.assertEqual(result.final, "")
 
 
 class GroundingTests(unittest.TestCase):
@@ -65,29 +65,29 @@ class GroundingTests(unittest.TestCase):
                         self.assertTrue(result.self_audit.clean, result.self_audit.report())
 
     def test_an_uncertain_material_is_hedged_not_resolved(self):
-        h3 = compose(EXAMPLE).h3
-        self.assertIn("smooth blouse", h3)
-        self.assertNotIn("satin", h3)
-        self.assertNotIn("silk", h3)
+        final_prompt = compose(EXAMPLE).final
+        self.assertIn("smooth blouse", final_prompt)
+        self.assertNotIn("satin", final_prompt)
+        self.assertNotIn("silk", final_prompt)
 
     def test_an_uncertain_attribute_with_no_hedge_is_left_out_entirely(self):
         ir = parse_dsl("subject.identity = a woman\nwardrobe.top = blouse\nwardrobe.top_material ~ | satin")
-        h3 = compose(ir).h3
-        self.assertIn("blouse", h3)
-        self.assertNotIn("satin", h3)
+        final_prompt = compose(ir).final
+        self.assertIn("blouse", final_prompt)
+        self.assertNotIn("satin", final_prompt)
 
     def test_an_absent_attribute_is_never_composed(self):
         ir = parse_dsl("subject.identity = a woman\nsubject.jewellery !")
-        self.assertNotIn("jewellery", compose(ir).h3)
+        self.assertNotIn("jewellery", compose(ir).final)
 
     def test_notes_never_reach_the_prompt(self):
         ir = parse_dsl("@note shot on a phone at dusk\nsubject.identity = a woman")
-        h3 = compose(ir).h3
-        self.assertNotIn("phone", h3)
-        self.assertNotIn("dusk", h3)
+        final_prompt = compose(ir).final
+        self.assertNotIn("phone", final_prompt)
+        self.assertNotIn("dusk", final_prompt)
 
     def test_viewer_relative_wording_survives_composition(self):
-        self.assertIn("viewer-left", compose(EXAMPLE).h3)
+        self.assertIn("viewer-left", compose(EXAMPLE).final)
 
 
 class QualifierTests(unittest.TestCase):
@@ -101,51 +101,51 @@ class QualifierTests(unittest.TestCase):
         ir = parse_dsl(
             "wardrobe.top = blouse\nwardrobe.top_material ~ smooth\nwardrobe.top_color = pale blue\n"
         )
-        self.assertIn("pale blue smooth blouse", compose(ir).h3)
+        self.assertIn("pale blue smooth blouse", compose(ir).final)
 
     def test_an_orphaned_qualifier_is_left_out_and_reported(self):
         # "smooth" on its own describes nothing, so it is not floated into the
         # prompt alone — it shows up as an unused fact instead.
         ir = parse_dsl("subject.identity = a woman\nwardrobe.top_material ~ smooth")
         result = compose(ir)
-        self.assertNotIn("smooth", result.h3)
+        self.assertNotIn("smooth", result.final)
         self.assertIn("wardrobe.top_material", result.unused_paths)
 
 
 class MotionAndContinuityTests(unittest.TestCase):
     def test_requested_motions_appear(self):
-        h3 = compose(EXAMPLE, motions=["blink", "breathing"]).h3
-        self.assertIn("blink", h3)
-        self.assertIn("breathing", h3)
+        final_prompt = compose(EXAMPLE, motions=["blink", "breathing"]).final
+        self.assertIn("blink", final_prompt)
+        self.assertIn("breathing", final_prompt)
 
     def test_a_rejected_motion_is_absent_from_the_prompt_but_named_in_the_trace(self):
         ir = parse_dsl("subject.identity = a woman\nsubject.pose = seated")
         result = compose(ir, motions=["hair_movement"])
-        self.assertNotIn("hair", result.h3)
+        self.assertNotIn("hair", result.final)
         self.assertIn("hair_movement", result.trace())
 
     def test_auto_continuity_waits_for_motion(self):
-        self.assertNotIn("stays", compose(EXAMPLE).h3)
-        self.assertIn("stays", compose(EXAMPLE, motions=["blink"]).h3)
+        self.assertNotIn("stays", compose(EXAMPLE).final)
+        self.assertIn("stays", compose(EXAMPLE, motions=["blink"]).final)
 
     def test_always_and_never_override_auto(self):
-        self.assertIn("stays", compose(EXAMPLE, continuity="always").h3)
-        self.assertNotIn("stays", compose(EXAMPLE, motions=["blink"], continuity="never").h3)
+        self.assertIn("stays", compose(EXAMPLE, continuity="always").final)
+        self.assertNotIn("stays", compose(EXAMPLE, motions=["blink"], continuity="never").final)
 
     def test_continuity_restates_the_observed_value_verbatim(self):
-        h3 = compose(EXAMPLE, continuity="always").h3
-        self.assertIn("gaze stays toward camera", h3)
-        self.assertIn("hands stay resting on the lap", h3)
+        final_prompt = compose(EXAMPLE, continuity="always").final
+        self.assertIn("gaze stays toward camera", final_prompt)
+        self.assertIn("hands stay resting on the lap", final_prompt)
 
     def test_continuity_covers_only_attributes_a_motion_prompt_drifts_on(self):
-        h3 = compose(EXAMPLE, continuity="always").h3
-        self.assertNotIn("setting stays", h3)
+        final_prompt = compose(EXAMPLE, continuity="always").final
+        self.assertNotIn("setting stays", final_prompt)
 
 
 class DirectiveTests(unittest.TestCase):
     def test_directives_are_kept_verbatim_and_marked_as_such(self):
         result = compose(EXAMPLE, directives="5 seconds, static camera, 16:9")
-        self.assertIn("5 seconds", result.h3)
+        self.assertIn("5 seconds", result.final)
         clause = next(c for c in result.clauses if c.kind == "directive")
         self.assertEqual(clause.paths, ())
         self.assertIn("directive", result.trace())
@@ -156,7 +156,7 @@ class DirectiveTests(unittest.TestCase):
         self.assertNotIn("umbrella", result.self_audit.filtered_prompt)
 
     def test_an_empty_directive_adds_nothing(self):
-        self.assertEqual(compose(EXAMPLE, directives="  ,  ").h3, compose(EXAMPLE).h3)
+        self.assertEqual(compose(EXAMPLE, directives="  ,  ").final, compose(EXAMPLE).final)
 
 
 class NegativeTests(unittest.TestCase):
@@ -168,10 +168,19 @@ class NegativeTests(unittest.TestCase):
     def test_the_negative_never_holds_what_the_ir_observed(self):
         self.assertNotIn("seated", compose(EXAMPLE).negative)
 
-    def test_uncertain_candidates_become_negatives(self):
+    def test_uncertain_candidates_never_become_negatives(self):
+        # "we could not tell whether it is satin" is not "it is not satin".
+        # Putting a weighed-but-unconfirmed reading into a negative prompt
+        # invents an exclusion the image never supported, and steers generation
+        # away from what may be the right answer.
         negative = compose(EXAMPLE).negative
-        self.assertIn("satin", negative)
-        self.assertIn("silk", negative)
+        self.assertNotIn("satin", negative)
+        self.assertNotIn("silk", negative)
+
+    def test_the_candidates_are_still_kept_for_the_guard(self):
+        # Not negating them is not the same as forgetting them: the guard still
+        # needs them to stop a prompt from asserting one.
+        self.assertEqual(EXAMPLE.get("wardrobe.top_material").forbidden_specifics(), ("satin", "silk"))
 
     def test_absent_attributes_become_negatives(self):
         ir = parse_dsl("subject.identity = a woman\nsubject.jewellery !")
@@ -205,7 +214,7 @@ class ArgumentTests(unittest.TestCase):
             compose(EXAMPLE, continuity="sometimes")
 
     def test_tags_style_drops_the_connectives(self):
-        tags = compose(EXAMPLE, style="tags").h3
+        tags = compose(EXAMPLE, style="tags").final
         self.assertNotIn("wearing", tags)
         self.assertIn("blouse", tags)
         self.assertTrue(audit(EXAMPLE, tags).clean)

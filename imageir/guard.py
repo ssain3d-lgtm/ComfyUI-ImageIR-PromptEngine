@@ -209,6 +209,83 @@ class AuditResult:
         return "\n".join(lines)
 
 
+# Private-use codepoints. A protected span is swapped for one of these before
+# auditing: they match no token pattern, so every check sees the span as absent
+# rather than as a word it has to judge.
+_SHIELD_BASE = 0xE000
+_SHIELD_LIMIT = 0x900
+
+
+def audit_protected(
+    ir: ImageIR,
+    text: str,
+    protected: tuple,
+    **kwargs,
+) -> tuple[AuditResult, str]:
+    """Audit ``text`` while treating matches of ``protected`` as untouchable.
+
+    Structured prompt formats carry syntax that is not a claim about the image:
+    field labels, shot markers, picture references, speaker ids. Passing that
+    syntax through the clause classifier produces two failures at once — the
+    markers are flagged as untraceable, and removing them destroys the format.
+
+    Shielding is the honest fix, and it is stronger than the obvious
+    alternative of adding the markers to an allowlist. An allowlisted word is
+    still a word in the sentence, so "<Picture 1> wearing a satin blouse" would
+    have its marker forgiven and could drag the rest of the clause along.
+    A shielded span is *removed* before judging and restored after, so the
+    grounding rules run on exactly the prose that makes visual claims, with the
+    same strictness they always had.
+
+    Returns the audit of the shielded text, and the filtered text with the
+    markers put back.
+    """
+    spans: list[str] = []
+
+    def shield(match) -> str:
+        if len(spans) >= _SHIELD_LIMIT:
+            return match.group(0)
+        spans.append(match.group(0))
+        return chr(_SHIELD_BASE + len(spans) - 1)
+
+    shielded = text
+    for pattern in protected:
+        shielded = pattern.sub(shield, shielded)
+
+    result = audit(ir, shielded, **kwargs)
+
+    def restore(value: str) -> str:
+        for index, original in enumerate(spans):
+            value = value.replace(chr(_SHIELD_BASE + index), original)
+        return value
+
+    restored_clauses = tuple(
+        ClauseVerdict(
+            text=restore(clause.text),
+            separator=clause.separator,
+            classification=clause.classification,
+            trace=clause.trace,
+            findings=tuple(
+                Finding(
+                    rule=f.rule,
+                    label=f.label,
+                    clause=restore(f.clause),
+                    detail=f.detail,
+                    suggestion=f.suggestion,
+                )
+                for f in clause.findings
+            ),
+        )
+        for clause in result.clauses
+    )
+    readable = AuditResult(
+        clauses=restored_clauses,
+        filtered_prompt=restore(result.filtered_prompt),
+        ir_paths_used=result.ir_paths_used,
+    )
+    return readable, readable.filtered_prompt
+
+
 def _split(prompt: str) -> list[tuple[str, str]]:
     """Prompt -> [(clause text, the punctuation that followed it)]."""
     parts = _SPLIT_RE.split(prompt)

@@ -358,6 +358,7 @@ TECHNICAL_TERMS: frozenset[str] = frozenset(
 STYLE_TERMS: frozenset[str] = frozenset(
     """
     photoreal photorealistic realistic cinematic filmic documentary editorial photographic
+    live action animated animation
     grain grainy analog analogue film digital sharp crisp detailed highly quality masterpiece
     bokeh depth field shallow anamorphic 35mm 50mm 85mm lens
     """.split()

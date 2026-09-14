@@ -12,6 +12,10 @@ The last node in any chain should be Image IR Grounding Guard. The engine
 already audits itself, but a prompt that has been edited, concatenated with
 someone's favourite style string, or written entirely by hand has no such
 guarantee — and rule 9 asks for the check to happen on the final text.
+
+The nodes here author, merge, inspect and compose from IMAGE_IR. Getting an
+IMAGE_IR out of an actual image is image_ir_backend_nodes.py, and the MiniMax
+H3 format lives there too.
 """
 
 from __future__ import annotations
@@ -136,7 +140,12 @@ class ImageIRMerge:
 
 
 class ImageIRPromptEngine:
-    """Compose H1 / H2 / H3 prompts that contain nothing IMAGE_IR does not."""
+    """Compose CORE / DETAIL / FINAL prompts that contain nothing IMAGE_IR does not.
+
+    This is the generic grounded composer. It is NOT a MiniMax H3 prompt — that
+    format has its own node, and the tiers here were renamed away from H1/H2/H3
+    precisely so the two can never be mistaken for each other.
+    """
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -187,10 +196,10 @@ class ImageIRPromptEngine:
         }
 
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING")
-    RETURN_NAMES = ("h3_prompt", "h1_core", "h2_attributes", "negative_prompt", "trace", "audit")
+    RETURN_NAMES = ("final_prompt", "core_prompt", "detail_prompt", "negative_prompt", "trace", "audit")
     FUNCTION = "run"
     CATEGORY = CATEGORY
-    DESCRIPTION = "Build an H3 prompt strictly from IMAGE_IR, with only rule 6 micro-motions added."
+    DESCRIPTION = "Build a grounded prompt strictly from IMAGE_IR, with only rule 6 micro-motions added."
 
     def run(
         self,
@@ -227,7 +236,7 @@ class ImageIRPromptEngine:
             style=style,
         )
         result = composition.self_audit
-        prompt = composition.h3
+        prompt = composition.final
         if result is not None and not result.clean:
             if on_violation == "error":
                 raise ValueError(
@@ -236,7 +245,7 @@ class ImageIRPromptEngine:
             if on_violation == "filter":
                 prompt = result.filtered_prompt
         report = result.report() if result is not None else "no audit"
-        return (prompt, composition.h1, composition.h2, composition.negative, composition.trace(), report)
+        return (prompt, composition.core, composition.detail, composition.negative, composition.trace(), report)
 
 
 class ImageIRGroundingGuard:
@@ -251,6 +260,12 @@ class ImageIRGroundingGuard:
                     "default": "", "multiline": True,
                     "tooltip": "The prompt to check. Every clause must trace to an IMAGE_IR fact, to the "
                                "rule 6 micro-motion allowlist, or to a directive that claims nothing visual.",
+                }),
+                "prompt_format": (["plain", "minimax_h3"], {
+                    "default": "plain",
+                    "tooltip": "minimax_h3 recognises the H3 document shape — field names, shot and picture "
+                               "markers, the audio blocks — and audits only the visual description, so the "
+                               "format survives the check. plain audits the whole text as prose.",
                 }),
                 "on_violation": (["filter", "error", "report_only"], {
                     "default": "filter",
@@ -285,19 +300,24 @@ class ImageIRGroundingGuard:
         self,
         image_ir,
         prompt,
+        prompt_format="plain",
         on_violation="filter",
         allow_style_terms=True,
         check_pronouns=True,
         require_motion_anchor=True,
     ):
         ir = _as_ir(image_ir)
-        result = audit(
-            ir,
-            prompt or "",
-            allow_style=allow_style_terms,
-            require_anchor=require_motion_anchor,
-            check_pronouns=check_pronouns,
-        )
+        options = {
+            "allow_style": allow_style_terms,
+            "require_anchor": require_motion_anchor,
+            "check_pronouns": check_pronouns,
+        }
+        if prompt_format == "minimax_h3":
+            from .imageir.h3 import audit_h3_document
+
+            result, _filtered = audit_h3_document(ir, prompt or "", **options)
+        else:
+            result = audit(ir, prompt or "", **options)
         if not result.clean and on_violation == "error":
             raise ValueError("IMAGE_IR grounding audit failed:\n" + result.report())
         text = result.filtered_prompt if (on_violation == "filter" and not result.clean) else (prompt or "")
@@ -366,9 +386,9 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "ImageIRFromText": "Image IR (write)",
+    "ImageIRFromText": "Image IR Write (manual)",
     "ImageIRMerge": "Image IR Merge",
-    "ImageIRPromptEngine": "Image IR Prompt Engine (H3)",
+    "ImageIRPromptEngine": "Image IR Prompt Composer",
     "ImageIRGroundingGuard": "Image IR Grounding Guard",
     "ImageIRInspect": "Image IR Inspect",
 }

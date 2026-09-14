@@ -1,5 +1,6 @@
 """The ComfyUI surface: node contracts, widget wiring, and the failure modes."""
 
+import sys
 import unittest
 
 import harness
@@ -50,7 +51,8 @@ class MappingTests(unittest.TestCase):
             spec = cls.INPUT_TYPES()
             for group in ("required", "optional"):
                 for widget, definition in spec.get(group, {}).items():
-                    if widget.endswith("_ir") or definition[0] == "IMAGE_IR":
+                    # Sockets carry no widget, so they carry no tooltip.
+                    if definition[0] in ("IMAGE_IR", "IMAGEIR_BACKEND", "IMAGE"):
                         continue
                     with self.subTest(node=name, widget=widget):
                         self.assertIn("tooltip", definition[1] if len(definition) > 1 else {})
@@ -180,10 +182,13 @@ class PromptEngineTests(unittest.TestCase):
     def test_the_audit_output_is_a_report(self):
         self.assertIn("IMAGE_IR grounding audit", self.node.run(self.ir)[5])
 
-    def test_the_negative_prompt_is_derived_from_the_ir(self):
+    def test_the_negative_prompt_holds_only_what_the_ir_rules_out(self):
         negative = self.node.run(self.ir)[3]
         self.assertIn("away from camera", negative)
-        self.assertIn("satin", negative)
+        # An unconfirmed reading is not an exclusion: "we could not tell whether
+        # it is satin" must never become "it is not satin".
+        self.assertNotIn("satin", negative)
+        self.assertNotIn("silk", negative)
 
 
 class GuardNodeTests(unittest.TestCase):
@@ -272,3 +277,239 @@ class InspectTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# The nodes added in the second pass: backends, the analyzer, MiniMax H3.
+# ---------------------------------------------------------------------------
+
+TOKEN = "sk-test-fake"
+
+ANALYZER_REPLY = """Here is my reading.
+
+```json
+{"sections": {
+  "subject": {"identity": {"value": "a woman", "certainty": "observed", "confidence": 0.95},
+              "gaze": {"value": "toward camera", "certainty": "observed", "confidence": 0.9},
+              "hair": {"value": "shoulder-length", "certainty": "observed", "confidence": 0.8}},
+  "wardrobe": {"top": {"value": "blouse", "certainty": "observed", "confidence": 0.85},
+               "top_material": {"value": null, "certainty": "uncertain", "hedge": "smooth",
+                                "candidates": ["satin", "silk"], "confidence": 0.35,
+                                "evidence": "even sheen"}}}}
+```
+"""
+
+TINY_IMAGE = [[[[0.4, 0.3, 0.3], [0.5, 0.4, 0.4]], [[0.2, 0.2, 0.2], [0.6, 0.5, 0.5]]]]
+
+
+def backend_config(**kwargs):
+    defaults = dict(provider="openai_compatible", model_name="gemma-3-12b",
+                    base_url="http://127.0.0.1:1234", api_token=TOKEN)
+    defaults.update(kwargs)
+    return NODES["ImageIRBackendConfig"]().run(**defaults)
+
+
+class BackendConfigNodeTests(unittest.TestCase):
+    def test_it_returns_a_config_and_a_readable_summary(self):
+        config, summary = backend_config()
+        self.assertEqual(config.model_name, "gemma-3-12b")
+        self.assertIn("provider", summary)
+
+    def test_the_summary_never_carries_the_token(self):
+        _config, summary = backend_config()
+        self.assertNotIn(TOKEN, summary)
+        self.assertIn("***", summary)
+
+    def test_api_token_and_max_tokens_stay_separate(self):
+        config, _summary = backend_config(api_token=TOKEN, max_tokens=4096)
+        self.assertEqual(config.api_token.reveal(), TOKEN)
+        self.assertEqual(config.max_tokens, 4096)
+
+    def test_a_llama_launch_config_shows_the_command_it_would_run(self):
+        _config, summary = backend_config(provider="llama_cpp", server_mode="launch_local",
+                                          gguf_model_path="/m/model.gguf", mmproj_path="/m/mmproj.gguf")
+        self.assertIn("--mmproj /m/mmproj.gguf", summary)
+        self.assertIn("--n-gpu-layers", summary)
+
+    def test_the_shown_command_never_carries_the_token(self):
+        _config, summary = backend_config(provider="llama_cpp", server_mode="launch_local",
+                                          gguf_model_path="/m/model.gguf", api_token=TOKEN)
+        self.assertNotIn(TOKEN, summary)
+
+    def test_an_invalid_setting_is_a_node_error_not_a_crash(self):
+        with self.assertRaises(ValueError):
+            backend_config(max_tokens=0)
+
+
+class BackendControlNodeTests(unittest.TestCase):
+    def test_a_non_llama_provider_is_told_there_is_nothing_to_launch(self):
+        config, _summary = backend_config(provider="gemini", model_name="gemini-2.5-flash", base_url="")
+        _config, status, running = NODES["ImageIRBackendControl"]().run(config, action="status")
+        self.assertIn("does not launch", status)
+        self.assertFalse(running)
+
+    def test_status_on_a_free_port_reports_stopped(self):
+        config, _summary = backend_config(provider="llama_cpp", server_mode="launch_local",
+                                          gguf_model_path="/m/model.gguf", port=59997)
+        _config, status, running = NODES["ImageIRBackendControl"]().run(config, action="status")
+        self.assertIn("stopped", status)
+        self.assertFalse(running)
+
+    def test_starting_with_a_bad_path_fails_cleanly(self):
+        # A bad path must be a node result, never an exception out of ComfyUI.
+        config, _summary = backend_config(provider="llama_cpp", server_mode="launch_local",
+                                          llama_server_path="/nowhere/llama-server",
+                                          gguf_model_path="/nowhere/model.gguf", port=59998)
+        _config, status, running = NODES["ImageIRBackendControl"]().run(config, action="start")
+        self.assertFalse(running)
+        self.assertIn("/nowhere/llama-server", status)
+
+    def test_stopping_something_we_never_started_is_not_an_error(self):
+        config, _summary = backend_config(provider="llama_cpp", gguf_model_path="/m/model.gguf", port=59999)
+        _config, status, _running = NODES["ImageIRBackendControl"]().run(config, action="stop")
+        self.assertIn("nothing to stop", status)
+
+
+class AnalyzerNodeTests(unittest.TestCase):
+    def analyze(self, reply=ANALYZER_REPLY, **kwargs):
+        """Run the analyzer node against a stubbed transport."""
+        import imageir.backend as backend_package
+
+        config, _summary = backend_config()
+        node = NODES["ImageIRAnalyzer"]()
+        original = backend_package.get_backend
+        module = sys.modules[NODES["ImageIRAnalyzer"].__module__]
+
+        def stub(cfg, sender=None):
+            return original(cfg, lambda url, payload, headers, timeout: {
+                "choices": [{"message": {"content": reply}}], "model": "gemma-3-12b",
+                "usage": {"total_tokens": 700},
+            })
+
+        module.get_backend = stub
+        try:
+            return node.run(TINY_IMAGE, config, **kwargs)
+        finally:
+            module.get_backend = original
+
+    def test_an_image_becomes_an_ir_without_anyone_typing_one(self):
+        ir, ir_json, _low, summary, _debug = self.analyze()
+        self.assertEqual(ir.get("subject.gaze").value, "toward camera")
+        self.assertIn("toward camera", ir_json)
+        self.assertIn("identity=a woman", summary)
+
+    def test_uncertainty_survives_the_node(self):
+        ir, *_rest = self.analyze()
+        material = ir.get("wardrobe.top_material")
+        self.assertTrue(material.is_uncertain)
+        self.assertEqual(material.candidates, ("satin", "silk"))
+
+    def test_low_confidence_attributes_are_listed(self):
+        _ir, _json, low, _summary, _debug = self.analyze(confidence_threshold=0.6)
+        self.assertIn("wardrobe.top_material", low)
+        self.assertIn("0.35", low)
+
+    def test_the_threshold_is_honoured(self):
+        _ir, _json, low, _summary, _debug = self.analyze(confidence_threshold=0.1)
+        self.assertIn("no attribute", low)
+
+    def test_the_debug_output_never_carries_the_token(self):
+        _ir, _json, _low, _summary, debug = self.analyze()
+        self.assertNotIn(TOKEN, debug)
+
+    def test_the_debug_output_names_the_endpoint_and_model(self):
+        _ir, _json, _low, _summary, debug = self.analyze()
+        self.assertIn("127.0.0.1:1234", debug)
+        self.assertIn("gemma-3-12b", debug)
+
+    def test_a_malformed_reply_is_a_node_error_with_the_reason(self):
+        with self.assertRaises(ValueError) as caught:
+            self.analyze(reply="I cannot describe this image.")
+        self.assertIn("no JSON object", str(caught.exception))
+
+    def test_each_detail_level_runs(self):
+        for detail in ("fast", "balanced", "detailed"):
+            with self.subTest(detail=detail):
+                ir, *_rest = self.analyze(analysis_detail=detail)
+                self.assertTrue(ir.facts)
+
+    def test_a_missing_image_is_a_clear_error(self):
+        config, _summary = backend_config()
+        with self.assertRaises(ValueError) as caught:
+            NODES["ImageIRAnalyzer"]().run(None, config)
+        self.assertIn("IMAGE", str(caught.exception))
+
+
+class MiniMaxH3NodeTests(unittest.TestCase):
+    def setUp(self):
+        self.ir = build_ir()
+        self.node = NODES["MiniMaxH3PromptComposer"]()
+
+    def test_the_official_fields_come_back_in_order(self):
+        prompt, description, soundscape, music, _trace, _audit = self.node.run(self.ir)
+        positions = [prompt.index(f"{f}:") for f in
+                     ("integrated_multimodal_description", "overall_soundscape", "non_diegetic_music")]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn(description, prompt)
+        self.assertEqual(soundscape, "N/A")
+        self.assertEqual(music, "N/A")
+
+    def test_it_opens_with_the_reference_sentence(self):
+        self.assertTrue(self.node.run(self.ir)[0].startswith("For the target video, at 0.00 seconds"))
+
+    def test_an_uncertain_material_is_never_sharpened(self):
+        prompt = self.node.run(self.ir)[0]
+        self.assertIn("smooth blouse", prompt)
+        self.assertNotIn("satin", prompt)
+
+    def test_subject_and_camera_motion_do_not_bleed_together(self):
+        _prompt, description, *_rest = self.node.run(self.ir, blink=True, camera_motion="slow_pan_left")
+        self.assertIn("blink", description)
+        self.assertIn("The camera pans slowly toward the viewer-left", description)
+
+    def test_a_refused_motion_is_explained_in_the_trace(self):
+        bare = build_ir("subject.identity = a woman\nsubject.pose = seated")
+        _prompt, description, _s, _m, trace, _audit = self.node.run(bare, hair_movement=True)
+        self.assertNotIn("hair", description)
+        self.assertIn("hair_movement", trace)
+
+    def test_an_ungrounded_style_is_filtered(self):
+        prompt = self.node.run(self.ir, style="on a rooftop in Tokyo")[0]
+        self.assertNotIn("Tokyo", prompt)
+
+    def test_error_mode_stops_the_run(self):
+        with self.assertRaises(ValueError):
+            self.node.run(self.ir, style="on a rooftop in Tokyo", on_violation="error")
+
+
+class GuardFormatModeTests(unittest.TestCase):
+    def setUp(self):
+        self.ir = build_ir()
+        self.document = NODES["MiniMaxH3PromptComposer"]().run(
+            self.ir, blink=True, overall_soundscape="Quiet room tone."
+        )[0]
+
+    def test_h3_mode_keeps_the_format_and_finds_nothing_to_remove(self):
+        text, report, count, clean = NODES["ImageIRGroundingGuard"]().run(
+            self.ir, self.document, prompt_format="minimax_h3"
+        )
+        self.assertTrue(clean, report)
+        self.assertEqual(count, 0)
+        self.assertIn("non_diegetic_music:", text)
+
+    def test_plain_mode_would_shred_the_same_document(self):
+        _text, _report, count, clean = NODES["ImageIRGroundingGuard"]().run(
+            self.ir, self.document, prompt_format="plain"
+        )
+        self.assertFalse(clean)
+        self.assertGreater(count, 0)
+
+    def test_h3_mode_still_catches_a_claim_injected_into_the_description(self):
+        tampered = self.document.replace("medium shot", "medium shot, holding a red umbrella")
+        text, _report, count, clean = NODES["ImageIRGroundingGuard"]().run(
+            self.ir, tampered, prompt_format="minimax_h3"
+        )
+        self.assertFalse(clean)
+        self.assertEqual(count, 1)
+        self.assertNotIn("umbrella", text)
+        self.assertIn("integrated_multimodal_description:", text)
