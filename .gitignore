@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+
+# Lint / type-check caches
+.ruff_cache/
+.mypy_cache/
+
+# Environments
+.venv/
+venv/
+env/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code agent worktrees
+.claude/

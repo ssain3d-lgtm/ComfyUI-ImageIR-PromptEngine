@@ -1,0 +1,17 @@
+# Lint settings live here rather than in pyproject.toml: the registry publish
+# workflow fires on any change to pyproject.toml, so tooling edits there would
+# queue a release of an unchanged version. The line length is generous because
+# this code keeps a lexicon entry or a widget spec on one line rather than
+# wrapping it, and E501 is not in the selected set anyway.
+target-version = "py310"
+line-length = 140
+
+# F: pyflakes (unused imports and names, f-string mistakes).
+# E9: syntax and IO errors. B: bugbear (mutable defaults, except-pass, ...).
+# UP: pyupgrade, held to the 3.10 floor by target-version above.
+[lint]
+select = ["F", "E9", "B", "UP"]
+
+[lint.per-file-ignores]
+# The test modules import the harness for its sys.path side effect.
+"tests/*" = ["F401"]

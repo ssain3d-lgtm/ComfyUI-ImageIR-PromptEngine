@@ -1,0 +1,6 @@
+# Runtime requirements for ComfyUI-Manager.
+#
+# There are none. The engine is pure Python standard library on purpose: the
+# grounding rules are the valuable part of this node, and they are easier to
+# trust — and to run outside ComfyUI, in CI or at a plain Python prompt — when
+# nothing has to be installed to exercise them.

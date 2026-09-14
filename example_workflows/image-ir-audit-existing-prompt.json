@@ -1,0 +1,156 @@
+{
+  "last_node_id": 3,
+  "last_link_id": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "Note",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        720,
+        360
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note",
+        "text": ""
+      },
+      "widgets_values": [
+        "Auditing a prompt you already have (rule 9)\n\nThe prompt in the guard breaks six rules, one per clause. Queue it and read `audit`:\n\n  rule 5  \"turns from ...\"     — invents a state before the frame\n  rule 3  \"a satin blouse\"     — resolves an attribute IMAGE_IR left uncertain\n  rule 4  \"her left hand\"      — subject-relative side, laterality not confirmed\n  rule 6  \"touching her hair\"  — motion a still frame cannot support\n  rule 2  \"standing\"           — contradicts the observed pose\n  rule 1  \"in Tokyo at night\"  — a setting IMAGE_IR never recorded\n\nEach clause reports the first rule it breaks, strictest first, so one clause never hides\nbehind a second finding. `prompt` comes back with only what traces:\n\n  a natural unhurried blink, medium shot, 5 seconds, 16:9.\n\nSet on_violation to `error` to make an ungrounded prompt stop the queue instead of being\nquietly trimmed."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 2,
+      "type": "ImageIRFromText",
+      "pos": [
+        40,
+        400
+      ],
+      "size": [
+        460,
+        420
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "image_ir",
+          "type": "IMAGE_IR",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "ir_json",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageIRFromText"
+      },
+      "widgets_values": [
+        "@frame viewer\n@laterality unconfirmed\n\nsubject.identity      = a woman\nsubject.pose          = seated, torso upright\nsubject.gaze          = toward camera\nsubject.hands         = resting on the lap\nsubject.hair          = shoulder-length, dark\nwardrobe.top          = blouse\nwardrobe.top_material ~ smooth | satin, silk\nscene.setting         = a plain studio backdrop\nlighting.key          = soft light from the viewer-left\ncamera.shot           = medium shot\ncamera.height         = eye level\n",
+        "auto",
+        "error"
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 3,
+      "type": "ImageIRGroundingGuard",
+      "pos": [
+        540,
+        400
+      ],
+      "size": [
+        460,
+        400
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image_ir",
+          "type": "IMAGE_IR",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "audit",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "violations",
+          "type": "INT",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "clean",
+          "type": "BOOLEAN",
+          "links": null,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageIRGroundingGuard"
+      },
+      "widgets_values": [
+        "she turns from looking away toward the camera, wearing a satin blouse, her left hand raised, touching her hair, standing on a rooftop, in Tokyo at night, a natural unhurried blink, medium shot, 5 seconds, 16:9",
+        "filter",
+        true,
+        true,
+        true
+      ],
+      "color": "#322",
+      "bgcolor": "#533"
+    }
+  ],
+  "links": [
+    [
+      1,
+      2,
+      0,
+      3,
+      0,
+      "IMAGE_IR"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 1,
+      "offset": [
+        0,
+        0
+      ]
+    }
+  },
+  "version": 0.4
+}

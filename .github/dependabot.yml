@@ -1,0 +1,15 @@
+version: 2
+updates:
+  # The Python pins live in requirements-ci.txt, which pip's ecosystem reads
+  # here; requirements.txt is empty and has nothing to bump.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

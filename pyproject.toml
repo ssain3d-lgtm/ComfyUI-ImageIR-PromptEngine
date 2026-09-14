@@ -1,0 +1,15 @@
+[project]
+name = "comfyui-imageir-promptengine"
+description = "IMAGE_IR prompt engine for ComfyUI — compose H1/H2/H3 prompts strictly from an image's recorded visual facts, and audit any prompt against them."
+version = "1.0.0"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/ssain3d-lgtm/ComfyUI-ImageIR-PromptEngine"
+
+[tool.comfy]
+PublisherId = "ssain3d-lgtm"
+DisplayName = "Image IR Prompt Engine"
+Icon = ""

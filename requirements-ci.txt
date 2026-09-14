@@ -1,0 +1,11 @@
+# Test-only dependencies for CI. ComfyUI users never install this file —
+# requirements.txt is the one ComfyUI-Manager reads, and it is empty.
+#
+# The package itself needs nothing: the tests import it with the standard
+# library alone. These are the gates that run around the tests. Upper bounds
+# keep a major release from breaking CI on its own schedule; Dependabot
+# proposes the bumps. ruff is held to one minor because a new minor adds rules
+# to the selected B/UP sets, and that upgrade belongs in a reviewed pull
+# request rather than in the next unrelated push.
+coverage>=7.6,<8
+ruff>=0.16.6,<0.17
