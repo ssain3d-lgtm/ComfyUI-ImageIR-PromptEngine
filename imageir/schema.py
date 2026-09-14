@@ -100,6 +100,23 @@ class Fact:
     # Per-fact override of the document's geometry frame, for a fact whose
     # laterality is known even though the rest of the IR's is not.
     frame: str | None = None
+    # How reliable the reader believes its own reading to be, 0.0-1.0. This is
+    # a different question from `certainty` and does not replace it: certainty
+    # says what kind of claim the IR is making (read / unreadable / not there),
+    # confidence says how much weight to put on that claim. An attribute can be
+    # observed at 0.55 — clearly visible, poorly resolved — and uncertain at
+    # 0.9 — confidently unreadable. None means unstated, which is not the same
+    # as low: a document written by hand simply never had a number to give, and
+    # inventing 1.0 for it would be fabricated precision.
+    confidence: float | None = None
+    # Whether a second reader should look before this is relied on. Set by the
+    # analyzer, and by a merge that could not reconcile two observations. The
+    # routing that would act on it is deliberately not built yet; the field
+    # exists so an IR written today survives it.
+    verification_required: bool = False
+    # What in the image led to the reading, in the reader's own words. Never
+    # composed into a prompt — it describes the act of looking, not the picture.
+    evidence: str | None = None
 
     @property
     def path(self) -> str:
@@ -152,7 +169,26 @@ class Fact:
             out["candidates"] = list(self.candidates)
         if self.frame:
             out["frame"] = self.frame
+        # Omitted when unset so a document that never carried confidence comes
+        # back out the way it went in, rather than growing nulls on every pass.
+        if self.confidence is not None:
+            out["confidence"] = self.confidence
+        if self.verification_required:
+            out["verification_required"] = True
+        if self.evidence:
+            out["evidence"] = self.evidence
         return out
+
+    @property
+    def is_low_confidence(self) -> bool:
+        """True only when a number was actually given and it is below 0.5.
+
+        An unstated confidence is not low confidence. Treating it as low would
+        flag every hand-written document; treating it as high would launder a
+        guess into a reading. It is neither, so it answers False here and is
+        surfaced separately where that distinction matters.
+        """
+        return self.confidence is not None and self.confidence < 0.5
 
 
 @dataclass(frozen=True)
@@ -185,6 +221,19 @@ class ImageIR:
 
     def observed(self) -> tuple[Fact, ...]:
         return tuple(f for f in self.facts if f.is_observed)
+
+    def low_confidence(self, threshold: float = 0.6) -> tuple[Fact, ...]:
+        """Facts a second reader should look at before anything relies on them.
+
+        Two ways in: a stated confidence below the threshold, or an explicit
+        verification_required. A fact with no confidence at all is in neither
+        group — it made no claim about its own reliability, and inventing one
+        here is the fabricated precision the schema exists to avoid.
+        """
+        return tuple(
+            f for f in self.facts
+            if f.verification_required or (f.confidence is not None and f.confidence < threshold)
+        )
 
     def emittable(self) -> tuple[Fact, ...]:
         """Facts that license some wording — observed, or uncertain with a hedge."""
@@ -270,7 +319,10 @@ def _parse_fact(section: str, slot: str, raw: Any) -> Fact:
     if not isinstance(raw, dict):
         raise IRError(f"{path}: expected a string, null or an object, got {type(raw).__name__}")
 
-    unknown = set(raw) - {"value", "certainty", "hedge", "candidates", "frame"}
+    unknown = set(raw) - {
+        "value", "certainty", "hedge", "candidates", "frame",
+        "confidence", "verification_required", "evidence",
+    }
     if unknown:
         raise IRError(f"{path}: unknown key(s) {', '.join(sorted(unknown))}")
 
@@ -303,6 +355,24 @@ def _parse_fact(section: str, slot: str, raw: Any) -> Fact:
     if frame is not None and frame not in FRAMES:
         raise IRError(f"{path}: frame must be one of {', '.join(FRAMES)}, got {frame!r}")
 
+    confidence = raw.get("confidence")
+    if confidence is not None:
+        # bool is an int subclass, and True would silently become 1.0.
+        if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+            raise IRError(f"{path}: confidence must be a number between 0.0 and 1.0")
+        confidence = float(confidence)
+        if not 0.0 <= confidence <= 1.0:
+            raise IRError(f"{path}: confidence must be between 0.0 and 1.0, got {confidence}")
+
+    verification_required = raw.get("verification_required", False)
+    if not isinstance(verification_required, bool):
+        raise IRError(f"{path}: verification_required must be true or false")
+
+    evidence = raw.get("evidence")
+    if evidence is not None and not isinstance(evidence, str):
+        raise IRError(f"{path}: evidence must be a string")
+    evidence = evidence.strip() if isinstance(evidence, str) else None
+
     if certainty == OBSERVED and not value:
         raise IRError(f"{path}: an observed fact needs a value")
     if certainty == ABSENT and value:
@@ -316,6 +386,9 @@ def _parse_fact(section: str, slot: str, raw: Any) -> Fact:
         hedge=hedge,
         candidates=candidates,
         frame=frame,
+        confidence=confidence,
+        verification_required=verification_required,
+        evidence=evidence or None,
     )
 
 
@@ -340,6 +413,14 @@ def parse_ir(source: Any) -> ImageIR:
     """
     if isinstance(source, ImageIR):
         return source
+
+    # Structural check as well as the isinstance above: a ComfyUI hot-reload can
+    # leave two copies of this module in memory, and a document built by one is
+    # then not an instance of the other's class even though it is the same data.
+    # Round-tripping through to_dict costs a little and turns a baffling
+    # "IMAGE_IR must be an object, got ImageIR" into no error at all.
+    if hasattr(source, "facts") and hasattr(source, "to_dict") and not isinstance(source, dict):
+        source = source.to_dict()
 
     if isinstance(source, (str, bytes)):
         text = source.decode() if isinstance(source, bytes) else source
@@ -430,6 +511,11 @@ def merge_ir(base: ImageIR, incoming: ImageIR, *, on_conflict: str = "error") ->
                     certainty=UNCERTAIN,
                     hedge=None,
                     candidates=tuple(dict.fromkeys((current.value or "", fact.value or ""))),
+                    # Two documents observed one attribute and disagreed. That
+                    # is exactly the case a verifier exists for, so the merge
+                    # records it rather than quietly picking a winner.
+                    verification_required=True,
+                    confidence=None,
                 )
             )
             continue

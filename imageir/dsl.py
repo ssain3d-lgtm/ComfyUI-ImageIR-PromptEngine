@@ -17,8 +17,17 @@ the direction the rules want the friction to run::
     subject.jewellery  !
 
 ``=`` observed · ``~`` uncertain, hedge before the pipe and the readings that
-were weighed after it · ``!`` looked for and absent. A trailing ``@subject`` or
-``@viewer`` overrides the document's geometry frame for that one attribute.
+were weighed after it · ``!`` looked for and absent.
+
+Trailing ``@`` markers annotate a line and may be combined::
+
+    wardrobe.hosiery ~ sheer | nude tights @0.78 @verify
+
+``@viewer`` / ``@subject`` override the document's geometry frame for that one
+attribute; a bare number is the reader's confidence in its own reading; and
+``@verify`` asks for a second look. Confidence is optional everywhere — a line
+without it is making no claim about its own reliability, which is the honest
+state for something a person typed.
 """
 
 from __future__ import annotations
@@ -27,7 +36,7 @@ import re
 
 from .schema import ABSENT, FRAMES, IRError, ImageIR, OBSERVED, UNCERTAIN, Fact
 
-_FRAME_SUFFIX = re.compile(r"\s+@(viewer|subject)\s*$", re.IGNORECASE)
+_SUFFIX = re.compile(r"\s+@([A-Za-z0-9_.]+)\s*$")
 _PATH = re.compile(r"^[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)*\.[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)*$")
 
 
@@ -52,9 +61,30 @@ def _directive(line: str, number: int, state: dict) -> None:
 
 def _fact(line: str, number: int) -> Fact:
     frame: str | None = None
-    match = _FRAME_SUFFIX.search(line)
-    if match:
-        frame = match.group(1).lower()
+    confidence: float | None = None
+    verification_required = False
+
+    # Peeled right-to-left so the markers can be given in any order.
+    while True:
+        match = _SUFFIX.search(line)
+        if not match:
+            break
+        marker = match.group(1)
+        lowered = marker.lower()
+        if lowered in FRAMES:
+            frame = lowered
+        elif lowered == "verify":
+            verification_required = True
+        else:
+            try:
+                confidence = float(marker)
+            except ValueError:
+                raise IRError(
+                    f"line {number}: unknown marker @{marker} "
+                    f"(expected @viewer, @subject, @verify or a confidence like @0.78)"
+                ) from None
+            if not 0.0 <= confidence <= 1.0:
+                raise IRError(f"line {number}: confidence must be between 0.0 and 1.0, got {confidence}")
         line = line[: match.start()].rstrip()
 
     for marker, certainty in (("=", OBSERVED), ("~", UNCERTAIN)):
@@ -69,7 +99,10 @@ def _fact(line: str, number: int) -> Fact:
         if certainty == OBSERVED:
             if not body:
                 raise IRError(f"line {number}: {path} is marked observed but has no value (use '!' for absent)")
-            return Fact(section=section, slot=slot, value=body, certainty=OBSERVED, frame=frame)
+            return Fact(
+                section=section, slot=slot, value=body, certainty=OBSERVED, frame=frame,
+                confidence=confidence, verification_required=verification_required,
+            )
         hedge, _, candidates = body.partition("|")
         return Fact(
             section=section,
@@ -79,6 +112,8 @@ def _fact(line: str, number: int) -> Fact:
             hedge=hedge.strip() or None,
             candidates=tuple(c.strip() for c in candidates.split(",") if c.strip()),
             frame=frame,
+            confidence=confidence,
+            verification_required=verification_required,
         )
 
     if line.rstrip().endswith("!"):
@@ -86,7 +121,10 @@ def _fact(line: str, number: int) -> Fact:
         if not _PATH.match(path):
             raise IRError(f"line {number}: {path!r} is not a section.attribute path")
         section, _, slot = path.partition(".")
-        return Fact(section=section, slot=slot, value=None, certainty=ABSENT, frame=frame)
+        return Fact(
+            section=section, slot=slot, value=None, certainty=ABSENT, frame=frame,
+            confidence=confidence, verification_required=verification_required,
+        )
 
     raise IRError(
         f"line {number}: expected 'section.attribute = value', 'section.attribute ~ hedge | candidates', "
