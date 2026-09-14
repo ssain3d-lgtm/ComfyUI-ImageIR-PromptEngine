@@ -7,5 +7,5 @@
 # proposes the bumps. ruff is held to one minor because a new minor adds rules
 # to the selected B/UP sets, and that upgrade belongs in a reviewed pull
 # request rather than in the next unrelated push.
-coverage>=7.6,<8
-ruff>=0.16.6,<0.17
+coverage>=7.16.0,<8
+ruff>=0.16.7,<0.17

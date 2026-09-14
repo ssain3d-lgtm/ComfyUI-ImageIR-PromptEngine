@@ -5,12 +5,14 @@ Note promises a verdict the nodes no longer give is worse than no example, and
 this is the only place that mismatch would be caught.
 """
 
+import ast
 import json
 import re
 import unittest
 from pathlib import Path
 
 import harness
+from harness import read_text
 
 ROOT = harness.ROOT
 nodes = harness.load_node_package()
@@ -31,7 +33,7 @@ class ShippedFilesTests(unittest.TestCase):
     def test_the_engine_imports_nothing_from_comfyui(self):
         # The rules must be runnable, and therefore testable, without ComfyUI.
         for path in (ROOT / "imageir").glob("*.py"):
-            source = path.read_text()
+            source = read_text(path)
             with self.subTest(module=path.name):
                 self.assertNotIn("import folder_paths", source)
                 self.assertNotIn("import comfy", source)
@@ -41,14 +43,50 @@ class ShippedFilesTests(unittest.TestCase):
         stdlib_only = re.compile(r"^\s*(?:from|import)\s+(\w+)", re.MULTILINE)
         third_party = {"torch", "numpy", "PIL", "aiohttp", "av", "scipy", "cv2"}
         for path in (ROOT / "imageir").glob("*.py"):
-            for module in stdlib_only.findall(path.read_text()):
+            for module in stdlib_only.findall(read_text(path)):
                 with self.subTest(module=path.name):
                     self.assertNotIn(module, third_party)
 
 
+class EncodingTests(unittest.TestCase):
+    """Windows decides file encoding by locale, so the tests have to be explicit."""
+
+    def test_every_shipped_text_file_is_valid_utf8(self):
+        for pattern in ("*.py", "*.md", "*.toml", "*.txt", "imageir/*.py", "tests/*.py",
+                        "example_workflows/*.json", ".github/workflows/*.yml"):
+            for path in ROOT.glob(pattern):
+                with self.subTest(path=path.name):
+                    path.read_bytes().decode("utf-8")
+
+    def test_no_test_reads_a_file_without_naming_the_encoding(self):
+        # The bug that only ever shows up on a Windows runner: a bare
+        # read_text() or open() decodes with the machine's locale, so a Korean
+        # README or an em dash blows up there and nowhere else. Caught here
+        # rather than three minutes into CI on someone else's pull request.
+        #
+        # Read through the AST rather than by pattern: prose about read_text()
+        # — this comment included — is not a call to it, and a checker that
+        # cannot tell the difference gets deleted the first time it is wrong.
+        for path in sorted((ROOT / "tests").glob("*.py")):
+            tree = ast.parse(read_text(path), filename=str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                named = {keyword.arg for keyword in node.keywords}
+                function = node.func
+                is_read_text = isinstance(function, ast.Attribute) and function.attr == "read_text"
+                is_open = isinstance(function, ast.Name) and function.id == "open"
+                if (is_read_text or is_open) and "encoding" not in named:
+                    with self.subTest(path=path.name, line=node.lineno):
+                        self.fail(
+                            f"{path.name}:{node.lineno} reads a file without an encoding; "
+                            f"use harness.read_text()"
+                        )
+
+
 class MetadataTests(unittest.TestCase):
     def setUp(self):
-        self.pyproject = (ROOT / "pyproject.toml").read_text()
+        self.pyproject = read_text(ROOT / "pyproject.toml")
 
     def test_the_registry_metadata_is_filled_in(self):
         for key in ("name =", "description =", "version =", "PublisherId", "DisplayName"):
@@ -57,7 +95,7 @@ class MetadataTests(unittest.TestCase):
 
     def test_the_python_floor_matches_the_lint_target(self):
         self.assertIn('requires-python = ">=3.10"', self.pyproject)
-        self.assertIn('target-version = "py310"', (ROOT / "ruff.toml").read_text())
+        self.assertIn('target-version = "py310"', read_text(ROOT / "ruff.toml"))
 
     def test_the_repository_url_points_at_this_project(self):
         self.assertIn("ComfyUI-ImageIR-PromptEngine", self.pyproject)
@@ -65,7 +103,7 @@ class MetadataTests(unittest.TestCase):
     def test_requirements_declares_no_runtime_dependency(self):
         lines = [
             line.strip()
-            for line in (ROOT / "requirements.txt").read_text().splitlines()
+            for line in read_text(ROOT / "requirements.txt").splitlines()
             if line.strip() and not line.strip().startswith("#")
         ]
         self.assertEqual(lines, [])
@@ -73,7 +111,7 @@ class MetadataTests(unittest.TestCase):
 
 class ReadmeTests(unittest.TestCase):
     def setUp(self):
-        self.readme = (ROOT / "README.md").read_text()
+        self.readme = read_text(ROOT / "README.md")
 
     def test_every_node_is_documented_by_its_display_name(self):
         for name in nodes.NODE_DISPLAY_NAME_MAPPINGS.values():
@@ -102,7 +140,7 @@ class ExampleWorkflowTests(unittest.TestCase):
         paths = sorted((ROOT / "example_workflows").glob("*.json"))
         self.assertTrue(paths, "no example workflows shipped")
         for path in paths:
-            yield path, json.loads(path.read_text())
+            yield path, json.loads(read_text(path))
 
     def test_they_are_valid_workflow_documents(self):
         for path, data in self.workflows():
@@ -145,7 +183,7 @@ class ExampleWorkflowTests(unittest.TestCase):
                     self.assertIn(target, ids)
 
     def test_the_h3_workflow_produces_a_clean_prompt(self):
-        data = json.loads((ROOT / "example_workflows" / "image-ir-h3-prompt.json").read_text())
+        data = json.loads(read_text(ROOT / "example_workflows" / "image-ir-h3-prompt.json"))
         by_type = {node["type"]: node for node in data["nodes"]}
         ir = NODES["ImageIRFromText"]().build(by_type["ImageIRFromText"]["widgets_values"][0])[0]
         engine = NODES["ImageIRPromptEngine"]()
@@ -160,7 +198,7 @@ class ExampleWorkflowTests(unittest.TestCase):
         self.assertNotIn("satin", prompt)
 
     def test_the_audit_workflow_reports_what_its_note_promises(self):
-        data = json.loads((ROOT / "example_workflows" / "image-ir-audit-existing-prompt.json").read_text())
+        data = json.loads(read_text(ROOT / "example_workflows" / "image-ir-audit-existing-prompt.json"))
         by_type = {node["type"]: node for node in data["nodes"]}
         note = next(node for node in data["nodes"] if node["type"] == "Note")["widgets_values"][0]
         ir = NODES["ImageIRFromText"]().build(by_type["ImageIRFromText"]["widgets_values"][0])[0]

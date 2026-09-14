@@ -17,6 +17,19 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
+def read_text(path):
+    """Read a repository file as UTF-8, whatever the machine's locale says.
+
+    Path.read_text() decodes with the locale's preferred encoding, which is
+    cp1252 on a default Windows install and ASCII under LC_ALL=C. The README is
+    half Korean and the source carries typographic dashes, so every one of
+    those reads fails there while passing on a UTF-8 Linux runner. The files
+    are UTF-8; saying so here is the fix, and it belongs in one place so a new
+    test cannot reintroduce the bug by reaching for read_text() directly.
+    """
+    return Path(path).read_text(encoding="utf-8")
+
+
 def load_node_package():
     """Load the repository root as a package, exactly as ComfyUI loads it."""
     if PACKAGE_NAME in sys.modules:
