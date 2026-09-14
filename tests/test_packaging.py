@@ -38,14 +38,36 @@ class ShippedFilesTests(unittest.TestCase):
                 self.assertNotIn("import folder_paths", source)
                 self.assertNotIn("import comfy", source)
 
-    def test_the_engine_needs_no_third_party_packages(self):
-        # requirements.txt is deliberately empty; this is what keeps it honest.
-        stdlib_only = re.compile(r"^\s*(?:from|import)\s+(\w+)", re.MULTILINE)
-        third_party = {"torch", "numpy", "PIL", "aiohttp", "av", "scipy", "cv2"}
-        for path in (ROOT / "imageir").glob("*.py"):
-            for module in stdlib_only.findall(read_text(path)):
-                with self.subTest(module=path.name):
-                    self.assertNotIn(module, third_party)
+    def test_importing_the_engine_needs_no_third_party_packages(self):
+        # requirements.txt is deliberately empty, and this is what keeps it
+        # honest. The rule is about IMPORT time: imaging.py reaches for numpy
+        # and Pillow inside a function, guarded, and falls back to the standard
+        # library — which is exactly why these tests can run at all here. A
+        # top-level import of the same names would make the plugin unloadable
+        # on a machine that lacks them, so only those are rejected.
+        third_party = {"torch", "numpy", "PIL", "aiohttp", "av", "scipy", "cv2", "requests", "httpx"}
+        for path in sorted((ROOT / "imageir").rglob("*.py")):
+            tree = ast.parse(read_text(path), filename=str(path))
+            for node in tree.body:  # top level only
+                names = []
+                if isinstance(node, ast.Import):
+                    names = [alias.name.split(".")[0] for alias in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                    names = [node.module.split(".")[0]]
+                for name in names:
+                    with self.subTest(module=path.name, imported=name):
+                        self.assertNotIn(name, third_party)
+
+    def test_the_whole_engine_imports_on_a_bare_interpreter(self):
+        # The end this is all for: every module loads with nothing installed.
+        import importlib
+
+        for name in ("schema", "lexicon", "motion", "compose", "guard", "dsl", "h3", "analyzer", "imaging"):
+            with self.subTest(module=name):
+                importlib.import_module(f"imageir.{name}")
+        for name in ("base", "openai_compatible", "gemini", "llama_cpp_launcher"):
+            with self.subTest(module=name):
+                importlib.import_module(f"imageir.backend.{name}")
 
 
 class EncodingTests(unittest.TestCase):
@@ -82,6 +104,43 @@ class EncodingTests(unittest.TestCase):
                             f"{path.name}:{node.lineno} reads a file without an encoding; "
                             f"use harness.read_text()"
                         )
+
+
+class SecretLeakTests(unittest.TestCase):
+    """Nothing in the repository may look like a working credential.
+
+    The patterns match real key SHAPES and lengths — an OpenAI key is 40+
+    characters, a Google API key is 39 — so the deliberately short fakes the
+    tests use ("sk-test-fake") cannot match, and a pasted real one cannot not.
+    """
+
+    PATTERNS = (
+        ("OpenAI-style", re.compile(r"\bsk-[A-Za-z0-9_-]{24,}")),
+        ("Google API key", re.compile(r"\bAIza[A-Za-z0-9_-]{30,}")),
+        ("bearer blob", re.compile(r"\bBearer\s+[A-Za-z0-9._-]{30,}")),
+        ("AWS access key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+        ("private key block", re.compile(r"BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY")),
+    )
+
+    def test_no_file_carries_anything_shaped_like_a_credential(self):
+        for path in sorted(ROOT.rglob("*")):
+            if not path.is_file() or ".git" in path.parts or "__pycache__" in path.parts:
+                continue
+            try:
+                content = read_text(path)
+            except (UnicodeDecodeError, OSError):
+                continue  # binary or unreadable: nothing to read a key out of
+            for label, pattern in self.PATTERNS:
+                match = pattern.search(content)
+                with self.subTest(path=path.name, pattern=label):
+                    self.assertIsNone(match, f"{path}: possible {label} credential")
+
+    def test_the_test_fakes_are_too_short_to_be_real(self):
+        # If a fake ever grew long enough to match, the scan above would start
+        # failing on our own fixtures and get weakened to compensate.
+        for label, pattern in self.PATTERNS:
+            with self.subTest(pattern=label):
+                self.assertIsNone(pattern.search("sk-test-fake AIza-fake"))
 
 
 class MetadataTests(unittest.TestCase):
@@ -148,10 +207,14 @@ class ExampleWorkflowTests(unittest.TestCase):
                 self.assertEqual(set(data) >= {"nodes", "links", "version"}, True)
                 self.assertTrue(data["nodes"])
 
+    # Node types ComfyUI itself provides. An example graph that starts from a
+    # real Load Image is worth more than one that cannot be run.
+    CORE_TYPES = {"Note", "LoadImage", "PreviewImage", "SaveImage"}
+
     def test_every_node_type_exists(self):
         for path, data in self.workflows():
             for node in data["nodes"]:
-                if node["type"] == "Note":
+                if node["type"] in self.CORE_TYPES:
                     continue
                 with self.subTest(workflow=path.name, node=node["type"]):
                     self.assertIn(node["type"], NODES)
@@ -161,14 +224,14 @@ class ExampleWorkflowTests(unittest.TestCase):
         # saved value after it; this is what catches that before a user hits it.
         for path, data in self.workflows():
             for node in data["nodes"]:
-                if node["type"] == "Note":
+                if node["type"] in self.CORE_TYPES:
                     continue
                 spec = NODES[node["type"]].INPUT_TYPES()
                 widgets = [
                     name
                     for group in ("required", "optional")
                     for name, definition in spec.get(group, {}).items()
-                    if definition[0] != "IMAGE_IR"
+                    if definition[0] not in ("IMAGE_IR", "IMAGEIR_BACKEND", "IMAGE")
                 ]
                 with self.subTest(workflow=path.name, node=node["type"]):
                     self.assertEqual(len(node["widgets_values"]), len(widgets))
@@ -182,20 +245,58 @@ class ExampleWorkflowTests(unittest.TestCase):
                     self.assertIn(origin, ids)
                     self.assertIn(target, ids)
 
-    def test_the_h3_workflow_produces_a_clean_prompt(self):
-        data = json.loads(read_text(ROOT / "example_workflows" / "image-ir-h3-prompt.json"))
+    def widget_kwargs(self, node, exclude=()):
+        spec = NODES[node["type"]].INPUT_TYPES()
+        names = [
+            name
+            for group in ("required", "optional")
+            for name, definition in spec.get(group, {}).items()
+            if definition[0] not in ("IMAGE_IR", "IMAGEIR_BACKEND", "IMAGE")
+        ]
+        pairs = dict(zip(names, node["widgets_values"], strict=True))
+        return {k: v for k, v in pairs.items() if k not in exclude}
+
+    def test_the_manual_workflow_produces_a_clean_prompt(self):
+        data = json.loads(read_text(ROOT / "example_workflows" / "image-ir-manual-prompt.json"))
         by_type = {node["type"]: node for node in data["nodes"]}
         ir = NODES["ImageIRFromText"]().build(by_type["ImageIRFromText"]["widgets_values"][0])[0]
-        engine = NODES["ImageIRPromptEngine"]()
-        spec = engine.INPUT_TYPES()["required"]
-        widgets = [name for name in spec if spec[name][0] != "IMAGE_IR"]
-        kwargs = dict(zip(widgets, by_type["ImageIRPromptEngine"]["widgets_values"], strict=True))
-        prompt, *_rest = engine.run(ir, **kwargs)
+        prompt, *_rest = NODES["ImageIRPromptEngine"]().run(ir, **self.widget_kwargs(by_type["ImageIRPromptEngine"]))
         _text, report, count, clean = NODES["ImageIRGroundingGuard"]().run(ir, prompt)
         self.assertTrue(clean, report)
         self.assertEqual(count, 0)
         self.assertIn("smooth blouse", prompt)
         self.assertNotIn("satin", prompt)
+
+    def test_the_analyzer_workflow_composes_a_clean_h3_prompt(self):
+        # Executed with a hand-written IR standing in for the vision model: the
+        # graph's shape and its composer settings are what this pins, and those
+        # are exactly what silently rot when a widget is added.
+        from imageir.dsl import parse_dsl
+
+        data = json.loads(read_text(ROOT / "example_workflows" / "image-ir-analyze-to-h3.json"))
+        by_type = {node["type"]: node for node in data["nodes"]}
+        self.assertIn("ImageIRAnalyzer", by_type)
+        self.assertIn("ImageIRBackendConfig", by_type)
+
+        ir = parse_dsl(
+            "subject.identity = a woman\nsubject.pose = seated\nsubject.gaze = toward camera\n"
+            "subject.hair = shoulder-length\ncamera.shot = medium shot"
+        )
+        composer = NODES["MiniMaxH3PromptComposer"]()
+        prompt, *_rest = composer.run(ir, **self.widget_kwargs(by_type["MiniMaxH3PromptComposer"]))
+        guard_kwargs = self.widget_kwargs(by_type["ImageIRGroundingGuard"], exclude=("prompt",))
+        _text, report, count, clean = NODES["ImageIRGroundingGuard"]().run(ir, prompt, **guard_kwargs)
+        self.assertTrue(clean, report)
+        self.assertEqual(count, 0)
+        for field in ("integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"):
+            self.assertIn(f"{field}:", prompt)
+
+    def test_the_analyzer_workflow_guard_is_in_h3_mode(self):
+        # A plain-mode guard on an H3 document deletes the format; the example
+        # must not teach that.
+        data = json.loads(read_text(ROOT / "example_workflows" / "image-ir-analyze-to-h3.json"))
+        guard = next(n for n in data["nodes"] if n["type"] == "ImageIRGroundingGuard")
+        self.assertEqual(self.widget_kwargs(guard)["prompt_format"], "minimax_h3")
 
     def test_the_audit_workflow_reports_what_its_note_promises(self):
         data = json.loads(read_text(ROOT / "example_workflows" / "image-ir-audit-existing-prompt.json"))

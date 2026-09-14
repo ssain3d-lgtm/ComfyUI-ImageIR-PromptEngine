@@ -6,12 +6,12 @@
       "id": 1,
       "type": "Note",
       "pos": [
-        40,
-        40
+        30,
+        20
       ],
       "size": [
-        700,
-        300
+        780,
+        380
       ],
       "flags": {},
       "order": 0,
@@ -23,7 +23,7 @@
         "text": ""
       },
       "widgets_values": [
-        "IMAGE_IR → H3 prompt\n\n1. Write what the image actually shows in Image IR (write). One attribute per line:\n     =  observed        subject.gaze = toward camera\n     ~  uncertain       wardrobe.top_material ~ smooth | satin, silk\n     !  absent          subject.jewellery !\n2. Image IR Inspect shows what the document licenses, and which rule 6 micro-motions it can carry.\n3. Image IR Prompt Engine composes H1 / H2 / H3 from those facts and nothing else. An uncertain\n   attribute comes out hedged (\"smooth blouse\"), never resolved (\"satin blouse\").\n4. Image IR Grounding Guard re-checks the finished text. Chain it last: the engine audits itself,\n   but anything edited or concatenated after it has no such guarantee.\n\nPlug h3_prompt into CLIP Text Encode, or into whatever your video model takes as its prompt.\nPut duration / aspect / render style in `directives` — not a description of the image."
+        "Hand-written IMAGE_IR -> generic grounded prompt\n\nThe advanced / debugging path: no vision model, you record what you see yourself.\n\n  =  observed        subject.gaze = toward camera\n  ~  uncertain       wardrobe.top_material ~ smooth | satin, silk\n  !  absent          subject.jewellery !\n\nTrailing markers: @0.42 confidence, @verify asks for a second look, @viewer / @subject\noverride the geometry frame for that one line.\n\nThe tiers are CORE / DETAIL / FINAL — not H1/H2/H3. \"H3\" means MiniMax H3, which has its\nown composer node; a tier called h3 that was not an H3 prompt was a trap.\n\nwardrobe.top_material comes out as \"smooth blouse\", never \"satin blouse\" — and satin and\nsilk do NOT appear in the negative prompt either. \"We could not tell\" is not \"it is not\"."
       ],
       "color": "#432",
       "bgcolor": "#653"
@@ -32,12 +32,12 @@
       "id": 2,
       "type": "ImageIRFromText",
       "pos": [
-        40,
-        380
+        30,
+        440
       ],
       "size": [
         460,
-        420
+        460
       ],
       "flags": {},
       "order": 1,
@@ -50,7 +50,7 @@
           "links": [
             1,
             2,
-            4
+            3
           ],
           "slot_index": 0
         },
@@ -65,7 +65,7 @@
         "Node name for S&R": "ImageIRFromText"
       },
       "widgets_values": [
-        "@frame viewer\n@laterality unconfirmed\n\nsubject.identity      = a woman\nsubject.pose          = seated, torso upright\nsubject.gaze          = toward camera\nsubject.hands         = resting on the lap\nsubject.hair          = shoulder-length, dark\nwardrobe.top          = blouse\nwardrobe.top_material ~ smooth | satin, silk\nscene.setting         = a plain studio backdrop\nlighting.key          = soft light from the viewer-left\ncamera.shot           = medium shot\ncamera.height         = eye level\n",
+        "@frame viewer\n@laterality unconfirmed\n\nsubject.identity      = a woman\nsubject.pose          = seated, torso upright\nsubject.gaze          = toward camera\nsubject.hands         = resting on the lap\nsubject.hair          = shoulder-length, dark\nwardrobe.top          = blouse\nwardrobe.top_material ~ smooth | satin, silk @0.42 @verify\nscene.setting         = a plain studio backdrop\nlighting.key          = soft light from the viewer-left\ncamera.shot           = medium shot\ncamera.height         = eye level\n",
         "auto",
         "error"
       ],
@@ -76,12 +76,12 @@
       "id": 3,
       "type": "ImageIRInspect",
       "pos": [
-        540,
-        380
+        530,
+        440
       ],
       "size": [
-        330,
-        140
+        340,
+        120
       ],
       "flags": {},
       "order": 2,
@@ -122,12 +122,12 @@
       "id": 4,
       "type": "ImageIRPromptEngine",
       "pos": [
-        540,
-        560
+        530,
+        600
       ],
       "size": [
         400,
-        480
+        520
       ],
       "flags": {},
       "order": 3,
@@ -141,21 +141,21 @@
       ],
       "outputs": [
         {
-          "name": "h3_prompt",
+          "name": "final_prompt",
           "type": "STRING",
           "links": [
-            3
+            4
           ],
           "slot_index": 0
         },
         {
-          "name": "h1_core",
+          "name": "core_prompt",
           "type": "STRING",
           "links": null,
           "slot_index": 0
         },
         {
-          "name": "h2_attributes",
+          "name": "detail_prompt",
           "type": "STRING",
           "links": null,
           "slot_index": 0
@@ -201,12 +201,12 @@
       "id": 5,
       "type": "ImageIRGroundingGuard",
       "pos": [
-        980,
-        560
+        970,
+        600
       ],
       "size": [
         400,
-        340
+        400
       ],
       "flags": {},
       "order": 4,
@@ -215,12 +215,12 @@
         {
           "name": "image_ir",
           "type": "IMAGE_IR",
-          "link": 4
+          "link": 3
         },
         {
           "name": "prompt",
           "type": "STRING",
-          "link": 3,
+          "link": 4,
           "widget": {
             "name": "prompt"
           }
@@ -257,6 +257,7 @@
       },
       "widgets_values": [
         "",
+        "plain",
         "filter",
         true,
         true,
@@ -285,26 +286,26 @@
     ],
     [
       3,
-      4,
-      0,
-      5,
-      1,
-      "STRING"
-    ],
-    [
-      4,
       2,
       0,
       5,
       0,
       "IMAGE_IR"
+    ],
+    [
+      4,
+      4,
+      0,
+      5,
+      1,
+      "STRING"
     ]
   ],
   "groups": [],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 1,
+      "scale": 0.85,
       "offset": [
         0,
         0

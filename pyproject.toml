@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-imageir-promptengine"
-description = "IMAGE_IR prompt engine for ComfyUI — compose H1/H2/H3 prompts strictly from an image's recorded visual facts, and audit any prompt against them."
-version = "1.0.0"
+description = "Read an image into IMAGE_IR with a vision model (llama.cpp, LM Studio, Gemini), then compose grounded prompts — including MiniMax H3 I2VA — that contain nothing the image did not show."
+version = "2.0.0"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = []

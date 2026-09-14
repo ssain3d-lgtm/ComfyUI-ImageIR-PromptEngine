@@ -1,59 +1,113 @@
 # ComfyUI-ImageIR-PromptEngine
 
-**Image IR Prompt Engine** for ComfyUI — write down what an image actually shows, then generate prompts that contain nothing else. Every clause is traced back to a recorded fact, and anything that cannot be traced is removed before the prompt leaves the graph.
+Read an image with a vision model, record what it **actually shows**, then build prompts that contain nothing else. Every clause is traced back to a recorded observation, and anything that cannot be traced is removed before the prompt leaves the graph.
 
 **[한국어](#-한국어) · [English](#-english)**
+
+```
+[Load Image] → [Backend Config] → [Image IR Analyzer] → IMAGE_IR → [MiniMax H3 Composer] → [Grounding Guard]
+```
 
 ---
 
 # 🇰🇷 한국어
 
-## 소개
+## 왜 필요한가
 
-이미지를 참조해 프롬프트를 쓰면, 거의 항상 **이미지에 없는 것이 섞여 들어갑니다.** 재질이 흐릿해서 확실하지 않았는데 "새틴"이라고 단정하고, 정면을 보고 있는데 "고개를 돌려 카메라를 본다"처럼 없던 **이전 상태**를 지어내고, 사진은 화면 기준 왼쪽만 알려 주는데 "그녀의 왼손"이라고 **인물 기준**으로 바꿔 씁니다. 결과물은 그럴듯하지만 더 이상 그 이미지가 아닙니다.
+참조 이미지를 보고 프롬프트를 쓰면 거의 항상 **이미지에 없는 것이 섞여 들어갑니다.** 재질이 흐릿해 확신할 수 없었는데 "새틴"이라 단정하고, 정면을 보고 있는데 "고개를 돌려 카메라를 본다"처럼 없던 **이전 상태**를 지어내고, 사진은 화면 기준 왼쪽만 알려 주는데 "그녀의 왼손"이라고 **인물 기준**으로 바꿔 씁니다. 결과는 그럴듯하지만 더 이상 그 이미지가 아닙니다.
 
-이 노드는 그 틈을 구조로 막습니다. 먼저 이미지에서 읽은 사실을 **IMAGE_IR**이라는 문서에 적고, 프롬프트는 **오직 그 문서에서만** 만들어집니다. 마지막에는 완성된 문장을 IR과 한 절씩 대조해서 근거가 없는 부분을 잘라 냅니다.
+이 확장은 그 틈을 구조로 막습니다. 비전 모델이 읽은 내용을 **IMAGE_IR** 문서에 한 번 기록하고, 프롬프트는 **오직 그 문서에서만** 만들어지며, 완성된 문장은 IR과 한 절씩 대조해 근거 없는 부분을 잘라 냅니다.
 
-## 핵심 개념
+## 세 가지 개념 — 헷갈리지 마세요
 
-### IMAGE_IR — 유일한 시각적 출처
+| | 무엇인가 |
+|---|---|
+| **IMAGE_IR** | **Intermediate Representation(중간 표현).** 원본 이미지와 프롬프트 생성 사이에 놓이는 구조화된 시각 기술. 이 프로젝트의 유일한 권위 있는 출처 |
+| **일반 근거 프롬프트** | 어떤 모델에도 넣을 수 있는 쉼표 구분 프롬프트. 티어는 `CORE` / `DETAIL` / `FINAL` |
+| **MiniMax H3 프롬프트** | MiniMax H3 영상 모델의 **공식 I2VA 포맷**. 필드명과 순서가 고정됨 |
 
-속성마다 **확신 수준**을 함께 적습니다. 이 세 가지가 전부입니다.
+> **중요**: 내부 티어는 예전에 H1/H2/H3였지만 지금은 **CORE/DETAIL/FINAL**입니다. `H3`는 오직 MiniMax H3만 가리킵니다.
+
+## 기본 워크플로
+
+```
+[Load Image]
+      ↓
+[Image IR Backend Config]     ← 모델·서버·토큰을 한 번만 설정
+      ↓
+[Image IR Analyzer]           ← 이미지를 읽어 IMAGE_IR 생성
+      ↓
+   IMAGE_IR
+      ↓
+[MiniMax H3 Prompt Composer]  ← 또는 [Image IR Prompt Composer]
+      ↓
+[Image IR Grounding Guard]    ← prompt_format = minimax_h3
+      ↓
+   최종 프롬프트
+```
+
+llama.cpp를 ComfyUI에서 직접 띄우려면 옆에 **[Image IR Backend Control]** 을 두면 됩니다.
+
+IMAGE_IR을 손으로 쓰는 **[Image IR Write (manual)]**, **[Image IR Merge]**, **[Image IR Inspect]** 는 고급/디버그용으로 그대로 남아 있습니다.
+
+## IMAGE_IR — 확신 수준 + 신뢰도
+
+속성마다 **두 가지 다른 정보**를 함께 기록합니다.
+
+**certainty** — 어떤 종류의 주장인가
 
 | 표기 | 뜻 | 프롬프트에 나가는 말 |
 |---|---|---|
-| `=` | **관찰됨** — 이미지에서 읽음 | 적은 값 **그대로** |
-| `~` | **불확실** — 있긴 한데 무엇인지 못 읽음 | **완곡어(hedge)만**. 후보는 절대 안 나감 |
-| `!` | **없음** — 찾아봤는데 이미지에 없음 | 아무것도 안 나감 |
+| `=` | **observed** — 이미지에서 읽음 | 적은 값 **그대로** |
+| `~` | **uncertain** — 있긴 한데 무엇인지 못 읽음 | **완곡어(hedge)만** |
+| `!` | **absent** — 찾아봤는데 없음 | 아무것도 안 나감 |
+
+**confidence** — 그 주장을 얼마나 믿을 수 있는가 (0.0–1.0, 선택)
+
+둘은 **서로 다른 질문**이며 어느 쪽도 다른 쪽을 대체하지 않습니다. `observed` + `0.55`(분명히 보이지만 해상도가 나쁨)도, `uncertain` + `0.9`(확실하게 판독 불가)도 가능합니다.
+
+`confidence`가 **없으면 없는 대로 둡니다.** 사람이 손으로 쓴 문서에는 원래 숫자가 없으며, 거기에 `1.0`을 채워 넣는 것은 없는 정밀도를 지어내는 일입니다.
+
+```json
+{
+  "value": "likely sheer nude tights",
+  "certainty": "uncertain",
+  "confidence": 0.78,
+  "verification_required": true,
+  "evidence": "uniform leg tone and subtle surface sheen"
+}
+```
+
+`verification_required`는 **향후 검증기(verifier) 라우팅을 위한 자리**입니다. 스키마는 준비되어 있지만 검증기 자체는 이번 패스에서 구현하지 않았습니다.
+
+손으로 쓸 때는 줄 문법을 씁니다:
 
 ```
 @frame viewer
 @laterality unconfirmed
 
 subject.identity      = a woman
-subject.pose          = seated, torso upright
-subject.gaze          = toward camera
-subject.hands         = resting on the lap
+subject.gaze          = toward camera @0.95
 wardrobe.top          = blouse
-wardrobe.top_material ~ smooth | satin, silk
+wardrobe.top_material ~ smooth | satin, silk @0.42 @verify
 subject.jewellery     !
 ```
 
-`wardrobe.top_material ~ smooth | satin, silk` 한 줄이 이렇게 동작합니다.
+### 불확실 후보는 네거티브 프롬프트가 **아닙니다**
 
-- 프롬프트에는 **`smooth blouse`** 로 나갑니다.
-- **`satin blouse` 는 나가지 않습니다.** `satin`과 `silk`는 "검토했지만 확정하지 못한 후보"로 기록되어 있어서, 가드가 이 단어를 보면 **규칙 3 위반**으로 잡아냅니다.
-- 네거티브 프롬프트에는 `satin, silk`가 자동으로 들어갑니다.
+`material ~ smooth | satin, silk` 는 이런 뜻입니다.
 
-### H1 · H2 · H3 — 세 단계 프롬프트
+- 프롬프트에는 **`smooth blouse`** 로 나갑니다
+- `satin blouse` 를 쓰려 하면 **규칙 3 위반**으로 잡힙니다
+- **`satin`, `silk` 는 네거티브 프롬프트에 들어가지 않습니다**
 
-| 단계 | 내용 |
-|---|---|
-| **H1** | 핵심 — 누가/무엇이, 어떤 자세로, 어디를 보는지 |
-| **H2** | 근거 있는 확장 — 의상, 배경, 조명, 카메라 |
-| **H3** | 실제로 쓰는 프롬프트 — H1 + H2 + 상태 유지 문구 + 규칙 6이 허용한 미세 동작 + 비시각적 지시(길이·비율·스타일) |
+마지막 항목이 핵심 수정입니다. *"새틴인지 실크인지 판독할 수 없었다"* 는 *"새틴이 아니다"* 가 **아닙니다.** 판독 실패를 배제 사실로 바꾸면 이미지가 뒷받침한 적 없는 제약을 지어내는 것이고, 정답일 수도 있는 값에서 생성을 밀어내게 됩니다.
 
-## 적용되는 9가지 근거 규칙
+후보는 가드가 **주장을 막기 위해** 계속 보관합니다. 주장하지 않는 것과 부정하는 것은 다릅니다.
+
+네거티브에 들어가는 것은 두 가지뿐입니다: **absent로 기록된 속성**, 그리고 **관찰된 값이 배제하는 반대 극**(시선이 카메라를 향한다면 "looking away"는 배제됨).
+
+## 9가지 근거 규칙
 
 1. IMAGE_IR에 없는 시각 정보를 **새로 만들지 않습니다.**
 2. 관찰된 속성을 **바꾸지 않습니다.**
@@ -63,7 +117,7 @@ subject.jewellery     !
 6. 동작은 IMAGE_IR과 **모순되지 않을 때만** 새로 생성합니다.
 7. **불확실함을 그대로 보존합니다.**
 8. IMAGE_IR이 화면 기준 좌표를 주면 **화면 기준 표현을 유지합니다.**
-9. 완성 전에 H3의 **모든 시각적 진술을 IMAGE_IR과 대조**하고, 추적되지 않는 것은 제거합니다.
+9. 완성 전에 **모든 시각적 진술을 IMAGE_IR과 대조**하고, 추적되지 않는 것은 제거합니다.
 
 ### 규칙 5가 실제로 하는 일
 
@@ -71,47 +125,140 @@ IMAGE_IR이 `gaze = toward camera`일 때 —
 
 ```
 ✗ "she turns from looking away toward the camera"
-```
-
-시선 값 자체는 맞지만, **"원래 다른 곳을 보고 있었다"** 는 이미지에 없는 이전 상태입니다. 정지 이미지에는 "이전"이 없습니다.
-
-```
 ✓ "she maintains gentle eye contact with the camera"
-✓ "gaze stays toward camera"        ← 엔진이 자동으로 넣는 상태 유지 문구
+✓ "gaze stays toward camera"        ← 엔진이 넣는 상태 유지 문구
 ```
+
+시선 값 자체는 맞지만 **"원래 다른 곳을 보고 있었다"** 는 이미지에 없는 이전 상태입니다. 정지 이미지에는 "이전"이 없습니다.
 
 ### 규칙 6 — 허용되는 미세 동작 5가지
 
 `blink` · `breathing` · `finger_movement` · `hair_movement` · `weight_shift`
 
-이것만 가능합니다. 시선 방향 변경, 자세 범주 변경, 팔다리를 크게 올리거나 내리기, 새로운 신체 부위 접촉, 다른 장소로 이동, 사물 조작은 모두 거부됩니다.
+시선 방향 변경, 자세 범주 변경, 팔다리를 크게 올리거나 내리기, 새로운 신체 부위 접촉, 이동, 사물 조작은 모두 거부됩니다.
 
-미세 동작도 두 가지 조건을 통과해야 합니다.
+미세 동작도 두 조건을 통과해야 합니다.
 
-- **모순 없음** — IR에 `eyes closed`가 있으면 `blink`는 거부됩니다.
-- **근거 있음** (`require_motion_anchor`, 기본 켜짐) — "머리카락이 흔들린다"는 말은 **머리카락이 있다는 시각적 주장**입니다. IR에 `subject.hair`가 없으면 규칙 6을 이용해 규칙 1을 우회하는 셈이므로 거부합니다. 끄면 규칙 6을 문자 그대로 읽어 모순만 확인합니다.
+- **모순 없음** — IR에 `eyes closed`가 있으면 `blink`는 거부
+- **근거 있음** (`require_motion_anchor`, 기본 켜짐) — "머리카락이 흔들린다"는 **머리카락이 있다는 시각적 주장**입니다. IR에 `subject.hair`가 없으면 규칙 6으로 규칙 1을 우회하는 셈이라 거부합니다
+
+## 백엔드 설정
+
+### api_token 과 max_tokens 는 완전히 다릅니다
+
+| 필드 | 뜻 |
+|---|---|
+| **`api_token`** | **인증** — API 키. Gemini에는 필수, 로컬 서버에는 보통 비워 둠 |
+| **`max_tokens`** | **생성 길이 상한** — 응답이 몇 토큰까지 나올 수 있는지. 인증과 무관 |
+
+둘을 섞으면 "모든 요청이 거부되거나 모든 응답이 잘리는" 설정이 만들어집니다.
+
+**토큰은 어디에도 노출되지 않습니다.** 노드 출력, 디버그 패널, 예외 메시지, 저장된 워크플로 어디에도 원문이 남지 않습니다. llama.cpp 로컬 실행 시에도 커맨드라인이 아니라 **환경 변수**로 전달되므로 `ps`에 보이지 않습니다.
+
+### A. llama.cpp — ComfyUI에서 직접 실행
+
+```
+provider          = llama_cpp
+server_mode       = launch_local
+llama_server_path = /opt/llama.cpp/llama-server
+gguf_model_path   = /models/gemma-3-12b-it-Q4_K_M.gguf
+mmproj_path       = /models/mmproj-gemma-3-12b-f16.gguf   ← 비전 모델에 필수
+host              = 127.0.0.1
+port              = 8080
+context_size      = 16384
+gpu_layers        = 999
+extra_args        = --jinja
+model_name        = gemma-3-12b
+```
+
+**[Image IR Backend Control]** 에서 `action = start`. 실행되는 명령은 Backend Config의 `summary` 출력에 그대로 표시됩니다:
+
+```
+llama-server --model <gguf> --host 127.0.0.1 --port 8080 \
+             --ctx-size 16384 --n-gpu-layers 999 --mmproj <mmproj> --jinja
+```
+
+준비물: llama.cpp 빌드(또는 릴리스 바이너리), GGUF 가중치, 비전용 **mmproj** 파일.
+
+안전 장치:
+
+- 해당 포트가 이미 응답하면 **두 번째 서버를 띄우지 않습니다**
+- `stop`은 **이 확장이 띄운 프로세스만** 종료합니다. 사용자가 직접 띄운 llama.cpp나 LM Studio는 건드리지 않습니다
+- 경로 오류·포트 충돌·기동 실패는 ComfyUI를 죽이지 않고 로그 마지막 줄과 함께 상태로 보고됩니다
+
+### B. llama.cpp — 이미 실행 중
+
+```
+provider    = llama_cpp   (또는 openai_compatible — 동일하게 동작)
+server_mode = connect_existing
+base_url    = http://127.0.0.1:8080
+model_name  = gemma-3-12b
+api_token   =            ← 보통 비움
+```
+
+### C. LM Studio
+
+LM Studio는 **같은 OpenAI 호환 클라이언트**를 씁니다. 별도 구현이 없습니다.
+
+```
+provider    = openai_compatible
+server_mode = connect_existing
+base_url    = http://127.0.0.1:1234
+model_name  = google/gemma-3-12b       ← LM Studio가 표시하는 모델 id
+api_token   =
+```
+
+LM Studio에서 **Local Server를 시작**하고 비전 지원 모델을 로드해 두세요.
+
+### D. Gemini
+
+```
+provider   = gemini
+model_name = gemini-2.5-flash          ← 모델명은 고정되어 있지 않음
+api_token  = <API 키>
+max_tokens = 4096
+```
+
+추가 파이썬 패키지가 **필요 없습니다.** REST API를 직접 호출하므로 선택적 의존성 누락으로 플러그인 임포트가 깨지는 경로 자체가 없습니다. API 키는 URL이 아니라 `x-goog-api-key` 헤더로 전달됩니다.
 
 ## 노드
 
 | 노드 | 하는 일 |
 |---|---|
-| **Image IR (write)** | IMAGE_IR 작성. 줄 단위 문법 또는 JSON. 기존 IR에 이어 붙이기 가능 |
-| **Image IR Merge** | 두 IMAGE_IR 병합. 관찰값을 **덮어쓰지 않습니다** |
-| **Image IR Prompt Engine (H3)** | H1/H2/H3 + 네거티브 + 추적표 + 자체 감사 결과 생성 |
-| **Image IR Grounding Guard** | 규칙 9. **아무** 프롬프트나 IR과 대조해 근거 없는 절을 제거 |
-| **Image IR Inspect** | IR 내용, 확신 수준, 사용 가능한 미세 동작 확인 |
+| **Image IR Backend Config** | 공급자·모델·생성 설정·토큰을 한 번에 지정 |
+| **Image IR Backend Control** | 로컬 llama-server `start` / `stop` / `restart` / `status` |
+| **Image IR Analyzer** | IMAGE → IMAGE_IR. 저신뢰 속성 목록과 디버그 정보도 출력 |
+| **MiniMax H3 Prompt Composer** | 공식 I2VA 포맷 H3 프롬프트 생성 |
+| **Image IR Prompt Composer** | 일반 근거 프롬프트 (CORE / DETAIL / FINAL) |
+| **Image IR Grounding Guard** | 규칙 9. `prompt_format = plain` 또는 `minimax_h3` |
+| **Image IR Write (manual)** | IMAGE_IR 직접 작성 (고급/디버그) |
+| **Image IR Merge** | 두 IMAGE_IR 병합. 관찰값을 덮어쓰지 않음 |
+| **Image IR Inspect** | IR 내용·확신 수준·사용 가능한 미세 동작 확인 |
+| **Image IR Extractor Prompt** | 분석 프롬프트 원문 출력 (수정용) |
 
-체인 끝에는 항상 **Grounding Guard**를 두세요. 엔진은 자기 출력을 스스로 감사하지만, 그 뒤에 손으로 고치거나 즐겨 쓰는 스타일 문자열을 이어 붙인 텍스트에는 그런 보장이 없습니다.
+체인 끝에는 항상 **Grounding Guard**를 두세요. 컴포저는 자기 출력을 스스로 감사하지만, 그 뒤에 손으로 고치거나 스타일 문자열을 이어 붙인 텍스트에는 그런 보장이 없습니다.
 
-## 출력
+## MiniMax H3 포맷
 
-| 출력 | 내용 |
-|---|---|
-| `h3_prompt` | 실제로 쓰는 프롬프트 |
-| `h1_core` / `h2_attributes` | 단계별 프롬프트 |
-| `negative_prompt` | IR이 배제한 값 + 불확실 후보 + 없는 것 (전부 자동 도출) |
-| `trace` | 절마다 어떤 IR 항목에서 왔는지. 쓰이지 않은 항목, 거부된 동작도 표시 |
-| `audit` | 규칙 9 감사 결과 — 유지된 절, 제거된 절, 위반한 규칙 원문 |
+공식 I2VA 포맷을 그대로 따릅니다 — 필드명, 순서, `라벨: 값` 구두점, 블록 사이 빈 줄까지.
+
+```
+For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.
+
+integrated_multimodal_description: [Shot 1] Live-action, cinematic, a woman, seated, ...
+
+overall_soundscape: Rain taps the glass; a chair creaks.
+
+non_diegetic_music: N/A
+```
+
+- **피사체 동작**과 **카메라 동작**은 별도 필드로 분리됩니다. 카메라 움직임은 문장 끝에 라벨로 붙이지 않고 샷 안에 자연스러운 영어 문장으로 씁니다(가이드 지시)
+- 오디오 두 필드는 **저자가 씁니다.** 정지 이미지에는 소리가 없으므로 IR이 근거를 줄 수 없고, 시각 근거 기준으로 감사하지 않습니다. 비우면 `N/A`
+- 가드의 `prompt_format = minimax_h3` 는 필드명·마커·오디오 블록을 보존하면서 **시각 기술 부분만** 감사합니다
+
+## 분석 프롬프트
+
+`prompts/image_ir_extractor.txt` — 거대한 파이썬 상수가 아니라 편집 가능한 파일입니다. 피사체·얼굴·머리·상의·하의·색·구조·재질 불확실성·투명도·스타킹 vs 맨다리·신발·손·자세·다리 기하·환경·사물·배경·조명·프레이밍·카메라 각도·공간 관계를 훑고, 알려진 위험 영역(인물 좌우 vs 화면 좌우, 재질 환각, 미묘한 색조, 시스루 스타킹, 배경 재질 오판, 다리 꼬임, 카메라 각도)을 명시적으로 경고합니다.
 
 ## 설치
 
@@ -120,12 +267,13 @@ cd ComfyUI/custom_nodes
 git clone https://github.com/ssain3d-lgtm/ComfyUI-ImageIR-PromptEngine
 ```
 
-추가 파이썬 패키지가 **필요 없습니다.** 엔진은 표준 라이브러리만 씁니다.
+**추가 파이썬 패키지가 필요 없습니다.** 엔진은 표준 라이브러리만 씁니다.
 
 ## 예제 워크플로
 
-- `example_workflows/image-ir-h3-prompt.json` — IMAGE_IR 작성 → H3 프롬프트 → 가드
-- `example_workflows/image-ir-audit-existing-prompt.json` — 이미 있는 프롬프트를 감사. 규칙 1·2·3·4·5·6 위반이 한 절씩 잡히는 것을 확인할 수 있습니다
+- `example_workflows/image-ir-analyze-to-h3.json` — 이미지 → 분석 → H3 → 가드 (기본 파이프라인)
+- `example_workflows/image-ir-manual-prompt.json` — IMAGE_IR 직접 작성 → 일반 프롬프트 → 가드
+- `example_workflows/image-ir-audit-existing-prompt.json` — 이미 있는 프롬프트 감사
 
 ---
 
@@ -135,42 +283,83 @@ git clone https://github.com/ssain3d-lgtm/ComfyUI-ImageIR-PromptEngine
 
 Writing a prompt from a reference image almost always smuggles something in. The fabric was too blurry to read, and the prompt says "satin". The subject is looking straight ahead, and the prompt says "she turns from looking away toward the camera" — a past the photograph never had. The photograph knows only which side of the frame a hand is on, and the prompt says "her left hand". The result is plausible and is no longer that image.
 
-This node closes the gap structurally. What the image shows is recorded once, in an **IMAGE_IR** document. Prompts are composed **only** from that document. The finished text is then compared against it clause by clause, and whatever cannot be traced is removed.
+This extension closes the gap structurally. A vision model's reading is recorded once, in an **IMAGE_IR** document; prompts are composed **only** from it; and the finished text is compared against it clause by clause, with whatever cannot be traced removed.
 
-## IMAGE_IR — the authoritative visual source
+## Three things, kept apart
 
-Every attribute carries how well it is known. There are three levels and no others:
+| | What it is |
+|---|---|
+| **IMAGE_IR** | **Intermediate Representation** — a structured visual description that sits between the raw image and prompt generation. The one authoritative source in this project |
+| **Generic grounded prompt** | A comma-separated prompt for any model. Tiers are `CORE` / `DETAIL` / `FINAL` |
+| **MiniMax H3 prompt** | The **official I2VA format** of the MiniMax H3 video model, with fixed field names and order |
+
+> **Note**: the internal tiers used to be called H1/H2/H3. They are now **CORE/DETAIL/FINAL**, and `H3` refers only ever to MiniMax H3. A field named `h3_prompt` that was not an H3 prompt was a trap.
+
+## The default workflow
+
+```
+[Load Image] → [Image IR Backend Config] → [Image IR Analyzer] → IMAGE_IR
+             → [MiniMax H3 Prompt Composer] → [Image IR Grounding Guard]
+```
+
+Put **[Image IR Backend Control]** beside it to start llama.cpp from ComfyUI. Manual **Write / Merge / Inspect** remain as advanced and debugging tools.
+
+## IMAGE_IR — certainty *and* confidence
+
+Each attribute carries two different pieces of information.
+
+**certainty** — what kind of claim this is:
 
 | Mark | Meaning | What may be emitted |
 |---|---|---|
 | `=` | **observed** — read off the image | the recorded value, **verbatim** |
-| `~` | **uncertain** — present, unreadable | the **hedge only**; never the candidates |
+| `~` | **uncertain** — present, unreadable | the **hedge only** |
 | `!` | **absent** — looked for, not there | nothing |
+
+**confidence** — how much weight to put on that claim, 0.0–1.0, optional.
+
+They answer different questions and neither replaces the other: an attribute can be observed at 0.55 (clearly present, poorly resolved) or uncertain at 0.9 (confidently unresolvable).
+
+An **unstated** confidence stays unstated. A hand-written document never had a number, and filling in 1.0 would be fabricated precision.
+
+```json
+{
+  "value": "likely sheer nude tights",
+  "certainty": "uncertain",
+  "confidence": 0.78,
+  "verification_required": true,
+  "evidence": "uniform leg tone and subtle surface sheen"
+}
+```
+
+`verification_required` is the seat for future verifier routing. The schema supports it; the verifier itself is deliberately not built yet.
+
+The hand-authoring syntax:
 
 ```
 @frame viewer
 @laterality unconfirmed
 
 subject.identity      = a woman
-subject.pose          = seated, torso upright
-subject.gaze          = toward camera
-subject.hands         = resting on the lap
+subject.gaze          = toward camera @0.95
 wardrobe.top          = blouse
-wardrobe.top_material ~ smooth | satin, silk
+wardrobe.top_material ~ smooth | satin, silk @0.42 @verify
 subject.jewellery     !
 ```
 
-That one uncertain line does three things: the prompt says **`smooth blouse`**; a prompt that says `satin blouse` is rejected under rule 3, because `satin` and `silk` are recorded as readings that were weighed and not confirmed; and `satin, silk` land in the negative prompt automatically.
+### Uncertain candidates are **not** negative prompts
 
-JSON is accepted too, and is what the nodes pass between themselves.
+`material ~ smooth | satin, silk` does three things:
 
-## H1 · H2 · H3
+- the prompt says **`smooth blouse`**
+- a prompt that says `satin blouse` is rejected under rule 3
+- **`satin` and `silk` do NOT enter the negative prompt**
 
-| Tier | Contents |
-|---|---|
-| **H1** | the core — who or what, how posed, where looking |
-| **H2** | the grounded expansion — wardrobe, scene, lighting, camera |
-| **H3** | the render-ready prompt — H1 + H2 + continuity wording + whatever micro-motion rule 6 permits + non-visual directives |
+That last point is the correction that matters. *"We could not tell whether it is satin"* is not *"it is not satin"*. Turning a failed reading into an exclusion invents a constraint the image never supported, and steers generation away from what may well be the right answer.
+
+The candidates are still kept, for the guard to stop a prompt from *asserting* one. Refusing to assert is not the same as denying.
+
+Only two things become negatives: attributes recorded **absent**, and the poles an observed value **rules out** (gaze toward camera excludes "looking away").
 
 ## The nine grounding rules
 
@@ -182,7 +371,7 @@ JSON is accepted too, and is what the nodes pass between themselves.
 6. Motion may be newly generated ONLY when it does not contradict IMAGE_IR.
 7. Preserve uncertainty.
 8. When IMAGE_IR provides viewer-relative geometry, preserve viewer-relative terminology.
-9. Before finalizing, compare every visual statement in the H3 prompt against IMAGE_IR, and remove anything that cannot be traced to it or to an explicitly allowed micro-motion.
+9. Before finalizing, compare every visual statement against IMAGE_IR and remove what cannot be traced.
 
 ### Rule 5 in practice
 
@@ -190,59 +379,133 @@ With `gaze = toward camera` in the IR:
 
 ```
 ✗ "she turns from looking away toward the camera"
-```
-
-The gaze value is correct and the sentence is still wrong: *"was looking away"* is a state before the frame, and a still frame has no before.
-
-```
 ✓ "she maintains gentle eye contact with the camera"
-✓ "gaze stays toward camera"        ← the continuity wording the engine adds
+✓ "gaze stays toward camera"        ← the continuity wording the composer adds
 ```
+
+The gaze value is right and the sentence is still wrong: *"was looking away"* is a state before the frame, and a still frame has no before.
 
 ### Rule 6 — the five micro-motions
 
 `blink` · `breathing` · `finger_movement` · `hair_movement` · `weight_shift`
 
-Everything else is refused: changing gaze direction, changing pose category, raising or lowering a limb substantially, touching a new body part, moving to another location, manipulating an object.
+Everything else is refused: changing gaze direction, changing pose category, raising or lowering a limb, touching a new body part, moving to another location, manipulating an object.
 
-Each of the five still has to clear two conditions:
+Each still clears two conditions — **no contradiction** (`eyes closed` rules out `blink`) and **an anchor** (`require_motion_anchor`, on by default: "a few strands of hair drifting" asserts that there *is* hair, so with no `subject.hair` recorded it would use rule 6 as a side door around rule 1).
 
-- **No contradiction** — `eyes closed` in the IR rules out `blink`.
-- **An anchor** (`require_motion_anchor`, on by default) — "a few strands of hair drifting" asserts that there *is* hair. With no `subject.hair` in the IR, allowing it would use rule 6 as a side door around rule 1. Turn the toggle off to read rule 6 literally, checking only for contradiction.
+## Backends
+
+### `api_token` and `max_tokens` are different things
+
+| Field | Meaning |
+|---|---|
+| **`api_token`** | **Authentication** — the API key. Required for Gemini, usually empty for a local server |
+| **`max_tokens`** | **Reply length cap** — how many tokens the answer may run to. Nothing to do with authentication |
+
+Collapsing them produces a config that either rejects every request or truncates every answer.
+
+**The token never appears in the clear** — not in node outputs, debug panels, exception text, or a saved workflow. For a locally launched llama.cpp it travels in the **environment**, not on the command line, so it is not readable from `ps`.
+
+### A. llama.cpp, launched from ComfyUI
+
+```
+provider          = llama_cpp
+server_mode       = launch_local
+llama_server_path = /opt/llama.cpp/llama-server
+gguf_model_path   = /models/gemma-3-12b-it-Q4_K_M.gguf
+mmproj_path       = /models/mmproj-gemma-3-12b-f16.gguf   ← required for vision
+host              = 127.0.0.1
+port              = 8080
+context_size      = 16384
+gpu_layers        = 999
+extra_args        = --jinja
+model_name        = gemma-3-12b
+```
+
+Then **[Image IR Backend Control]** with `action = start`. The exact command is printed in Backend Config's `summary`:
+
+```
+llama-server --model <gguf> --host 127.0.0.1 --port 8080 \
+             --ctx-size 16384 --n-gpu-layers 999 --mmproj <mmproj> --jinja
+```
+
+You need: a llama.cpp build (or release binary), GGUF weights, and the **mmproj** projector file for vision.
+
+Safeguards: it never starts a second server on a port that already answers; `stop` only ever stops a process **this extension started**, leaving your own llama.cpp or LM Studio alone; and a bad path, a port conflict or a failed startup is reported as a status with the last lines of server output rather than taking ComfyUI down.
+
+### B. llama.cpp, already running
+
+```
+provider    = llama_cpp        (or openai_compatible — identical behaviour)
+server_mode = connect_existing
+base_url    = http://127.0.0.1:8080
+model_name  = gemma-3-12b
+api_token   =                  ← usually empty
+```
+
+### C. LM Studio
+
+LM Studio uses the **same OpenAI-compatible client**. There is no second implementation.
+
+```
+provider    = openai_compatible
+server_mode = connect_existing
+base_url    = http://127.0.0.1:1234
+model_name  = google/gemma-3-12b     ← the model id LM Studio shows
+api_token   =
+```
+
+Start LM Studio's **Local Server** with a vision-capable model loaded.
+
+### D. Gemini
+
+```
+provider   = gemini
+model_name = gemini-2.5-flash        ← never hard-coded; names turn over
+api_token  = <API key>
+max_tokens = 4096
+```
+
+**No extra Python package.** The REST API is called directly, so there is no optional dependency whose absence could break the plugin's import. The key goes in the `x-goog-api-key` header, not the URL.
 
 ## Nodes
 
 | Node | What it does |
 |---|---|
-| **Image IR (write)** | Author IMAGE_IR, in the line syntax or as JSON; optionally extending an existing document |
-| **Image IR Merge** | Combine two documents. Sharpening is allowed; **overwriting an observation is not** |
-| **Image IR Prompt Engine (H3)** | Compose H1/H2/H3, a derived negative, a clause trace, and a self-audit |
-| **Image IR Grounding Guard** | Rule 9. Audit **any** prompt against the IR and strip what does not trace |
-| **Image IR Inspect** | Show the document, its certainty levels, and the micro-motions it can carry |
+| **Image IR Backend Config** | Provider, model, generation settings and token, chosen once |
+| **Image IR Backend Control** | `start` / `stop` / `restart` / `status` for a local llama-server |
+| **Image IR Analyzer** | IMAGE → IMAGE_IR, with low-confidence attributes and debug output |
+| **MiniMax H3 Prompt Composer** | An I2VA prompt in the official format |
+| **Image IR Prompt Composer** | The generic grounded prompt (CORE / DETAIL / FINAL) |
+| **Image IR Grounding Guard** | Rule 9, in `plain` or `minimax_h3` mode |
+| **Image IR Write (manual)** | Author IMAGE_IR by hand (advanced / debugging) |
+| **Image IR Merge** | Combine two documents; **never overwrites an observation** |
+| **Image IR Inspect** | The document, its certainty levels, and the micro-motions it can carry |
+| **Image IR Extractor Prompt** | Emit the analysis specification for reading or editing |
 
-Chain the **Grounding Guard** last. The engine audits its own output, but text that has been edited by hand or concatenated with a favourite style string carries no such guarantee — and rule 9 asks for the check on the final text.
+Chain the **Grounding Guard** last. A composer audits its own output, but text edited by hand or concatenated with a favourite style string carries no such guarantee.
 
-## Outputs
+## The MiniMax H3 format
 
-| Output | Contents |
-|---|---|
-| `h3_prompt` | the render-ready prompt |
-| `h1_core` / `h2_attributes` | the lower tiers, for inspecting a mistake at the altitude it lives at |
-| `negative_prompt` | poles the IR ruled out, candidates it refused to resolve, attributes it recorded as absent — all derived, none a taste preference |
-| `trace` | every clause with the IR paths that licensed it, plus facts left unused and motions refused |
-| `audit` | the rule 9 report: clauses kept, clauses removed, and the text of each rule broken |
+Reproduced as the official guide specifies it — field names, order, `label: value` punctuation, and the blank line between blocks.
 
-`on_violation` decides what a failure does: `filter` removes the offending clauses (default), `error` stops the queue, `report_only` passes the text through and still reports.
+```
+For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.
 
-## Grounding, concretely
+integrated_multimodal_description: [Shot 1] Live-action, cinematic, a woman, seated, ...
 
-The guard classifies each clause and keeps only three kinds:
+overall_soundscape: Rain taps the glass; a chair creaks.
 
-- **grounded** — every content word traces to an IR fact, or to a paraphrase of an observed wording listed in a reviewable equivalence table (so "holds eye contact with the camera" traces to `gaze = toward camera`, while "gazing warmly" does not — warmth was never observed).
-- **micro-motion** — one of the five, cleared for contradiction and anchor.
-- **directive** — render settings and durations, which claim nothing about the picture.
+non_diegetic_music: N/A
+```
 
-Everything else is a finding that names the rule, the clause, and the fix. A gendered pronoun counts as a claim about the subject: `she` needs the IR to have recorded a subject it fits, which is what `check_pronouns` governs.
+- **Subject motion** and **camera motion** are separate fields. Lens movement is written as natural English inside the shot rather than appended as a label, which is what the guide asks for.
+- The two audio fields are **authored**. A still records no sound, so IMAGE_IR cannot ground them and they are not audited for visual content. Empty becomes `N/A`.
+- The guard's `minimax_h3` mode preserves field names, markers and the audio blocks while auditing **only** the visual description.
+
+## The analysis prompt
+
+`prompts/image_ir_extractor.txt` — an editable file, not a giant Python constant. It works through subject, face, hair, upper and lower clothing, colours, garment structure, material uncertainty, transparency, hosiery vs bare skin, footwear, hands, pose, leg geometry, environment, objects, background, lighting, framing, camera angle and spatial relationships — and calls out the known risk areas explicitly: subject-left vs viewer-left, fabric hallucination, subtle colour casts, sheer hosiery vs bare legs, background fabric vs wood, crossed-leg geometry, camera angle.
 
 ## Installation
 
@@ -255,16 +518,23 @@ git clone https://github.com/ssain3d-lgtm/ComfyUI-ImageIR-PromptEngine
 
 ```python
 from imageir import parse_dsl, compose, audit
+from imageir.h3 import compose_h3
 
 ir = parse_dsl("subject.identity = a woman\nsubject.gaze = toward camera")
-print(compose(ir, motions=["blink"]).h3)
+print(compose(ir, motions=["blink"]).final)
+print(compose_h3(ir, motions=["blink"]).render())
 print(audit(ir, "she turns from looking away toward the camera").report())
 ```
 
 ## Example workflows
 
-- `example_workflows/image-ir-h3-prompt.json` — author IMAGE_IR, compose H3, guard the result
-- `example_workflows/image-ir-audit-existing-prompt.json` — audit a prompt you already have; its six clauses break rules 1, 2, 3, 4, 5 and 6, one each
+- `example_workflows/image-ir-analyze-to-h3.json` — image → analyze → H3 → guard (the default pipeline)
+- `example_workflows/image-ir-manual-prompt.json` — hand-written IMAGE_IR → generic prompt → guard
+- `example_workflows/image-ir-audit-existing-prompt.json` — audit a prompt you already have
+
+## Not built yet
+
+The schema makes room for these; this pass deliberately does not implement them: a Qwen verifier, automatic confidence routing, automatic multi-image IR merge, face or clothing crops, SAM, pose estimation, model downloading or management.
 
 ## Development
 
@@ -272,6 +542,8 @@ print(audit(ir, "she turns from looking away toward the camera").report())
 ruff check .
 python -m unittest discover -s tests -p "test_*.py" -v
 ```
+
+External calls are mocked throughout. The tests need no Gemini account, no running LM Studio, no llama.cpp, and no GGUF file.
 
 ## License
 

@@ -1,0 +1,460 @@
+{
+  "last_node_id": 7,
+  "last_link_id": 6,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "Note",
+      "pos": [
+        30,
+        20
+      ],
+      "size": [
+        880,
+        460
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note",
+        "text": ""
+      },
+      "widgets_values": [
+        "Image -> IMAGE_IR -> MiniMax H3\n\nThe normal workflow. You never type IMAGE_IR by hand.\n\n1. Image IR Backend Config — pick where the vision model lives.\n     LM Studio           provider=openai_compatible, base_url=http://127.0.0.1:1234\n     llama.cpp running   provider=llama_cpp, server_mode=connect_existing\n     llama.cpp from here provider=llama_cpp, server_mode=launch_local + gguf/mmproj paths,\n                         then set Backend Control to start\n     Gemini              provider=gemini, model_name=gemini-2.5-flash, api_token=<key>\n\n   api_token is the API KEY. max_tokens is the REPLY LENGTH. They are unrelated.\n   The token never appears in any output, error or saved workflow.\n\n2. Image IR Analyzer — reads the image into IMAGE_IR, keeping every uncertainty the\n   model reports. Watch low_confidence_attributes: those are the readings to distrust.\n\n3. MiniMax H3 Prompt Composer — the official I2VA format. Subject motion (the blink /\n   breathing toggles) and camera motion are separate on purpose.\n\n4. Image IR Grounding Guard with prompt_format = minimax_h3 — audits the visual\n   description while leaving the field names, markers and audio blocks intact.\n\nBackend Control is optional: use it only for llama.cpp + launch_local. It will not start a\nsecond server on a busy port, and it will never stop a server it did not start."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [
+        30,
+        520
+      ],
+      "size": [
+        320,
+        320
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "ImageIRBackendConfig",
+      "pos": [
+        380,
+        520
+      ],
+      "size": [
+        400,
+        620
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "backend_config",
+          "type": "IMAGEIR_BACKEND",
+          "links": [
+            2,
+            3
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "summary",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageIRBackendConfig"
+      },
+      "widgets_values": [
+        "openai_compatible",
+        "connect_existing",
+        "google/gemma-3-12b",
+        "http://127.0.0.1:1234",
+        "",
+        4096,
+        0.2,
+        0.9,
+        120.0,
+        "llama-server",
+        "",
+        "",
+        "127.0.0.1",
+        8080,
+        8192,
+        0,
+        ""
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 4,
+      "type": "ImageIRBackendControl",
+      "pos": [
+        380,
+        1180
+      ],
+      "size": [
+        400,
+        140
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "backend_config",
+          "type": "IMAGEIR_BACKEND",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "backend_config",
+          "type": "IMAGEIR_BACKEND",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "status",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "running",
+          "type": "BOOLEAN",
+          "links": null,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageIRBackendControl"
+      },
+      "widgets_values": [
+        "status",
+        90.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "ImageIRAnalyzer",
+      "pos": [
+        820,
+        520
+      ],
+      "size": [
+        400,
+        320
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "name": "backend_config",
+          "type": "IMAGEIR_BACKEND",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image_ir",
+          "type": "IMAGE_IR",
+          "links": [
+            4,
+            5
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "ir_json",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "low_confidence_attributes",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "compact_summary",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "analyzer_debug_info",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageIRAnalyzer"
+      },
+      "widgets_values": [
+        "balanced",
+        0.6,
+        ""
+      ],
+      "color": "#332",
+      "bgcolor": "#553"
+    },
+    {
+      "id": 6,
+      "type": "MiniMaxH3PromptComposer",
+      "pos": [
+        1260,
+        520
+      ],
+      "size": [
+        420,
+        520
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image_ir",
+          "type": "IMAGE_IR",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "h3_prompt",
+          "type": "STRING",
+          "links": [
+            6
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "integrated_multimodal_description",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "overall_soundscape",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "non_diegetic_music",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "trace",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "audit",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3PromptComposer"
+      },
+      "widgets_values": [
+        "slow_push_in",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        "Live-action, cinematic",
+        "Quiet room tone with faint fabric movement.",
+        "N/A",
+        "filter"
+      ],
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 7,
+      "type": "ImageIRGroundingGuard",
+      "pos": [
+        1720,
+        520
+      ],
+      "size": [
+        400,
+        400
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image_ir",
+          "type": "IMAGE_IR",
+          "link": 5
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 6,
+          "widget": {
+            "name": "prompt"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "audit",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "violations",
+          "type": "INT",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "clean",
+          "type": "BOOLEAN",
+          "links": null,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageIRGroundingGuard"
+      },
+      "widgets_values": [
+        "",
+        "minimax_h3",
+        "filter",
+        true,
+        true,
+        true
+      ],
+      "color": "#322",
+      "bgcolor": "#533"
+    }
+  ],
+  "links": [
+    [
+      1,
+      2,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      3,
+      0,
+      5,
+      1,
+      "IMAGEIR_BACKEND"
+    ],
+    [
+      3,
+      3,
+      0,
+      4,
+      0,
+      "IMAGEIR_BACKEND"
+    ],
+    [
+      4,
+      5,
+      0,
+      6,
+      0,
+      "IMAGE_IR"
+    ],
+    [
+      5,
+      5,
+      0,
+      7,
+      0,
+      "IMAGE_IR"
+    ],
+    [
+      6,
+      6,
+      0,
+      7,
+      1,
+      "STRING"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.85,
+      "offset": [
+        0,
+        0
+      ]
+    }
+  },
+  "version": 0.4
+}

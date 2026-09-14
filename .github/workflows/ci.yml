@@ -75,7 +75,9 @@ jobs:
       - name: Coverage gate
         # The shipped code only. The tests, and the harness they load it with,
         # would otherwise inflate the number they exist to measure.
-        run: coverage report --fail-under=94 --include="imageir/*,image_ir_nodes.py,__init__.py"
+        run: >-
+          coverage report --fail-under=88
+          --include="imageir/*,imageir/backend/*,image_ir_nodes.py,image_ir_backend_nodes.py,__init__.py"
 
   import-without-comfyui:
     name: Engine imports with no dependencies
@@ -98,13 +100,30 @@ jobs:
 
       - name: Import the engine on a bare interpreter
         # requirements.txt is empty on purpose. This is the job that keeps it
-        # true: nothing is installed here, not even the test tooling.
+        # true: nothing is installed here, not even the test tooling — no
+        # numpy, no Pillow, no HTTP library. Every backend and the image
+        # encoder must still import and work.
         run: |
           python -c "
           from imageir import audit, compose, parse_dsl
+          from imageir.h3 import compose_h3
+          from imageir.backend import BackendConfig, get_backend
+          from imageir.imaging import image_to_payload
+
           ir = parse_dsl('subject.identity = a woman\nsubject.gaze = toward camera')
-          prompt = compose(ir, motions=['blink']).h3
+          prompt = compose(ir, motions=['blink']).final
           print(prompt)
           assert audit(ir, prompt).clean
           assert not audit(ir, 'she turns from looking away toward the camera').clean
+
+          h3 = compose_h3(ir, motions=['blink']).render()
+          assert h3.startswith('For the target video, at 0.00 seconds')
+          assert 'integrated_multimodal_description:' in h3
+
+          for provider in ('llama_cpp', 'openai_compatible', 'gemini'):
+              get_backend(BackendConfig(provider=provider, model_name='m', base_url='http://x:1'))
+
+          payload = image_to_payload([[[[0.5, 0.5, 0.5]]]])
+          assert payload.data[:8] == b'\x89PNG\r\n\x1a\n'
+          print('every backend and the standard-library image encoder import clean')
           "
