@@ -27,6 +27,11 @@ structured generation through the existing backend's `generate_text`. Preserve
 raw Korean/English inputs and require each translated clause to cite an exact
 input span. Separate actions, camera, progression, style, audio, constraints,
 dialogue and explicitly described start/end states.
+After translation, independently review every clause against the original inputs
+with a second call to the same backend. Require complete typed verdicts and reject
+unsupported additions, omitted requirements or malformed verdicts. This reduces
+model hallucination but is not a proof of semantic entailment; manual JSON import
+is treated as user-authored state and never calls a model.
 
 `references.py`: REFERENCE_PACK_v1 with explicit image/video/audio roles and
 subject grouping. Image facts retain the original IMAGE_IR object/schema.

@@ -15,6 +15,17 @@ def intent_data(request="She waves."):
     }
 
 
+def approved_review(data):
+    from imageir.intent import CLAUSE_FIELDS
+    return {"clauses": [{"id": f"{name}[{i}]", "supported": True}
+                        for name in CLAUSE_FIELDS for i, _ in enumerate(data.get(name, []))],
+            "missing_requirements": []}
+
+
+def model_reply(data):
+    return {"choices": [{"message": {"content": json.dumps(data)}}]}
+
+
 class IntentTests(unittest.TestCase):
     def test_roundtrip(self):
         intent = parse_intent(intent_data())
@@ -43,7 +54,7 @@ class IntentTests(unittest.TestCase):
 
         def sender(url, payload, headers, timeout):
             calls.append(payload)
-            return {"choices": [{"message": {"content": json.dumps(data)}}]}
+            return model_reply(data if len(calls) == 1 else approved_review(data))
 
         intent = author_intent(get_backend(BackendConfig(), sender), request, duration=6)
         self.assertIn("raises one hand", intent.requested_actions[0].text)
@@ -100,7 +111,8 @@ class IntentTests(unittest.TestCase):
              "input": "request", "evidence": "여성이 카운터에서 일어나 앞으로 걸어오며 머리카락을 귀 뒤로 넘긴다."}]
         data["requested_camera"] = [{"text": "The camera slowly pulls back.", "input": "request",
                                      "evidence": "카메라는 천천히 뒤로 이동한다."}]
-        backend = get_backend(BackendConfig(), lambda *a: {"choices": [{"message": {"content": json.dumps(data)}}]})
+        replies = iter((model_reply(data), model_reply(approved_review(data))))
+        backend = get_backend(BackendConfig(), lambda *a: next(replies))
         intent = author_intent(backend, request)
         ir = parse_dsl("subject.identity = a woman\nsubject.pose = leaning against a counter\nsubject.gaze = toward camera\nwardrobe.top = pale blouse")
         result = compose_mode(intent, first=ir)
@@ -108,6 +120,27 @@ class IntentTests(unittest.TestCase):
         for text in ("walks forward", "tucks her hair", "pulls back", "pale blouse"):
             self.assertIn(text, result.render())
         self.assertNotIn("handbag", result.render())
+
+    def test_semantic_review_rejects_invented_object_despite_valid_quote(self):
+        data = intent_data("손을 흔든다.")
+        data["requested_actions"][0]["text"] = "She waves a handbag."
+        review = approved_review(data)
+        review["clauses"][0]["supported"] = False
+        replies = iter((model_reply(data), model_reply(review)))
+        backend = get_backend(BackendConfig(), lambda *a: next(replies))
+        with self.assertRaisesRegex(ValueError, "unsupported"):
+            author_intent(backend, "손을 흔든다.")
+
+    def test_semantic_review_requires_complete_typed_verdicts(self):
+        data = intent_data()
+        for review in [{"clauses": [], "missing_requirements": []},
+                       {"clauses": [{"id": "requested_actions[0]", "supported": "true"}], "missing_requirements": []},
+                       {**approved_review(data), "missing_requirements": ["camera movement"]},
+                       {"clauses": [{"id": "unknown", "supported": True}], "missing_requirements": []}]:
+            replies = iter((model_reply(data), model_reply(review)))
+            backend = get_backend(BackendConfig(), lambda *a, replies=replies: next(replies))
+            with self.subTest(review=review), self.assertRaisesRegex(ValueError, "review"):
+                author_intent(backend, "She waves.")
 
 
 if __name__ == "__main__":
