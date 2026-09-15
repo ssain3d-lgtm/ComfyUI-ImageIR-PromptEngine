@@ -231,7 +231,7 @@ class ExampleWorkflowTests(unittest.TestCase):
                     name
                     for group in ("required", "optional")
                     for name, definition in spec.get(group, {}).items()
-                    if definition[0] not in ("IMAGE_IR", "IMAGEIR_BACKEND", "IMAGE")
+                    if isinstance(definition[0], list) or definition[0] in ("STRING", "INT", "FLOAT", "BOOLEAN")
                 ]
                 with self.subTest(workflow=path.name, node=node["type"]):
                     self.assertEqual(len(node["widgets_values"]), len(widgets))
@@ -251,7 +251,7 @@ class ExampleWorkflowTests(unittest.TestCase):
             name
             for group in ("required", "optional")
             for name, definition in spec.get(group, {}).items()
-            if definition[0] not in ("IMAGE_IR", "IMAGEIR_BACKEND", "IMAGE")
+            if isinstance(definition[0], list) or definition[0] in ("STRING", "INT", "FLOAT", "BOOLEAN")
         ]
         pairs = dict(zip(names, node["widgets_values"], strict=True))
         return {k: v for k, v in pairs.items() if k not in exclude}

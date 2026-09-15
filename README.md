@@ -1,6 +1,6 @@
 # ComfyUI-ImageIR-PromptEngine
 
-Read an image with a vision model, record what it **actually shows**, then build prompts that contain nothing else. Every clause is traced back to a recorded observation, and anything that cannot be traced is removed before the prompt leaves the graph.
+Read images into **IMAGE_IR**, author future video instructions into **USER_INTENT**, and compose five H3 modes with **IMAGE_IR / USER_INTENT / H3_RULE** provenance. Existing image-only workflows remain available.
 
 **[한국어](#-한국어) · [English](#-english)**
 
@@ -153,7 +153,7 @@ IMAGE_IR이 `gaze = toward camera`일 때 —
 
 둘을 섞으면 "모든 요청이 거부되거나 모든 응답이 잘리는" 설정이 만들어집니다.
 
-**토큰은 어디에도 노출되지 않습니다.** 노드 출력, 디버그 패널, 예외 메시지, 저장된 워크플로 어디에도 원문이 남지 않습니다. llama.cpp 로컬 실행 시에도 커맨드라인이 아니라 **환경 변수**로 전달되므로 `ps`에 보이지 않습니다.
+**직접 입력한 토큰은 workflow/PNG metadata에 저장될 수 있습니다.** `api_token_env`에 환경변수 이름만 입력하고 `api_token`은 비워 두세요. 노드 출력·디버그·backend 예외는 마스킹합니다. llama.cpp 로컬 실행 시 키는 커맨드라인 대신 환경변수로 전달합니다.
 
 ### A. llama.cpp — ComfyUI에서 직접 실행
 
@@ -404,7 +404,7 @@ Each still clears two conditions — **no contradiction** (`eyes closed` rules o
 
 Collapsing them produces a config that either rejects every request or truncates every answer.
 
-**The token never appears in the clear** — not in node outputs, debug panels, exception text, or a saved workflow. For a locally launched llama.cpp it travels in the **environment**, not on the command line, so it is not readable from `ps`.
+**Direct api_token widgets ARE saved in workflows and PNG metadata.** Prefer `api_token_env` (an environment variable name), leaving `api_token` blank. Node outputs and backend errors are masked. For a locally launched llama.cpp it travels in the **environment**, not on the command line, so it is not readable from `ps`.
 
 ### A. llama.cpp, launched from ComfyUI
 
@@ -548,3 +548,93 @@ External calls are mocked throughout. The tests need no Gemini account, no runni
 ## License
 
 MIT
+
+## H3 5-mode USER_INTENT pipeline — 한국어 / English
+
+이슈 #5 구현입니다. **현재 이미지 사실은 IMAGE_IR**, **미래 행동·카메라·소리는
+USER_INTENT**, **출력 문법은 H3_RULE**로 분리합니다. 기존 노드는 계속 사용할 수 있습니다.
+
+| 새 노드 / New node | 역할 |
+|---|---|
+| **H3 User Intent Author** | 한국어/영어 요청 → 기존 backend로 구조화·번역 |
+| **H3 User Intent from JSON** | USER_INTENT 확인·수정·재입력, 모델 호출 없음 |
+| **H3 Reference Pack** | image/video/audio 역할 추가; 여러 노드를 연결 |
+| **H3 Mode Router** | 실제 입력에 따라 AUTO 선택, 모호한 입력은 오류 |
+| **MiniMax H3 Mode Composer (5 modes)** | 결정적 조립, 출처 trace와 권장 frames 출력 |
+| **ImageIR Provenance Guard** | 원본 상태로 재조립하여 미추적 변경 거부/복원 |
+
+### 연결 / Wiring
+
+Backend Config → Analyzer → `first_ir` / `final_ir`
+
+Backend Config + 자유 요청 → H3 User Intent Author → `user_intent`
+
+각 입력을 Router와 Composer에 함께 연결하고 Router의 `mode` 출력을 Composer의
+**`routed_mode`** 소켓에 연결합니다. Composer의 `h3_document` → Provenance Guard → 최종 prompt.
+처음에는 `shot_count=1`을 권장합니다. 이미지용 기존 Grounding Guard 대신 새
+Provenance Guard를 사용해야 요청한 미래 동작이 유지됩니다.
+
+| AUTO 입력 | 모드 | 상태 |
+|---|---|---|
+| 참조 없음 | T2VA | USER_INTENT 중심, 3개 필드 |
+| first_ir | I2VA | 0.00초 이미지 앵커 + 요청한 행동 |
+| first_ir + final_ir | FL2VA | 양쪽 이미지 앵커 + 변화 경로 |
+| final_ir | L2VA | 마지막 프레임에 도달 |
+| reference_pack | Ref2VA | 정확한 6개 섹션, 역할별 참조 |
+
+수동 모드는 intent hint보다 우선합니다. 연결된 자산과 맞지 않는 선택이나 frame IR과
+reference pack의 동시 연결은 오류로 처리합니다. 자산을 조용히 버리지 않습니다.
+Ref2VA 순서: `subject_definitions`, `summary`, `retention_analysis`,
+`detailed_description`, `overall_soundscape`, `non_diegetic_music`.
+
+### 스키마 / Schemas
+
+`USER_INTENT_v1`: `raw_request`, `inputs`, `duration_hint`, `mode_hint`,
+`shot_count_hint`, `summary`, `requested_actions`, `requested_camera`,
+`requested_scene_progression`, `requested_style`, `requested_sound`,
+`requested_music`, `constraints`, `dialogue`, `start_states`, `final_states`.
+문장 필드는 배열이며 항목은 `{text, input, evidence, shot, path}`입니다.
+`evidence`는 지정한 원문 input의 실제 부분 문자열이어야 합니다. 경계 상태는
+`path`에 `subject.pose` 같은 IMAGE_IR 경로를 기록합니다. 전체 객체를 JSON으로 저장하고
+다시 읽을 수 있습니다. 중간 구조를 확인한 뒤 수정하면 번역 실수를 추적하기 쉽습니다.
+
+`REFERENCE_PACK_v1`: `references` 배열. 항목은 `{label, type, role, subject, image_ir}`.
+예: `Picture 1 / image / identity / 1`, `Picture 2 / image / wardrobe / 1`,
+`Picture 3 / image / environment / 2`, `Video 1 / video / motion / 1`,
+`Audio 1 / audio / sound / 1`. 같은 주체의 여러 참조에는 같은 subject 번호를 사용합니다.
+이미지 IR은 optional이며 없으면 시각 세부를 생성하지 않고 경고합니다.
+미디어 파일을 첨부하는 노드가 아니므로 실제 H3 생성 workflow에 같은 번호로 자산을 연결해야 합니다.
+
+### 동작 범위 / Guarantees and limits
+
+- IMAGE_IR의 observed/uncertain/absent, confidence, evidence, verification_required와
+  viewer-relative geometry를 유지합니다. uncertainty 후보를 확정하거나 negative로 만들지 않습니다.
+- 미래 행동은 사용자 출처를 가지므로 이미지의 미세 동작 목록으로 제한하지 않습니다.
+  명시적 시작/종료 상태가 이미지와 충돌하면 오류를 냅니다.
+- 구조화된 원본으로 재조립하여 변경된 문자열을 검사합니다. 가방·인물 추가 또는
+  H3 마커·audio 블록 변경도 추적 없이는 통과하지 않습니다. 텍스트를 바꾸려면 원본 intent를 바꿔 재조립하세요.
+- 출처 검증은 일반 자연어의 논리적 함의를 완전히 증명하는 시스템은 아닙니다.
+  한국어 번역의 의미, 복잡한 시간 순서 및 다중 주체의 행동은 수동 검토가 필요합니다.
+- 24fps, 17k+5 프레임으로 올림합니다. 6초 요청은 158프레임(6.58초).
+  362/24초보다 긴 요청은 여러 렌더로 나눠야 합니다. 자동 분할·미디어 편집기는 구현하지 않습니다.
+- 샷 수와 시간은 결정적으로 생성합니다. 요청이 짧을 때 새 사건을 추가해 샷을 채우지 않습니다.
+  원어 대사는 하나의 `(S1)` 화자로 처리합니다. 여러 화자·언어는 후속 확장 대상입니다.
+- 참고 저장소는 실행 시 필요하지 않습니다. 새 패키지 의존성도 없습니다.
+
+### API token
+
+**직접 입력한 api_token은 ComfyUI workflow/PNG metadata에 저장될 수 있습니다.**
+기존 파일에 직접 입력했던 키는 해당 파일에서도 제거해야 합니다.
+권장: ComfyUI 프로세스 환경에 키를 설정하고 `api_token_env`에 그 **변수 이름만** 입력합니다.
+`api_token`은 비워 둡니다. 두 입력이 모두 있거나 지정한 환경변수가 없으면 오류입니다.
+새 환경변수는 ComfyUI 재시작 후 반영하세요. 출력/로그의 기존 Secret masking은 유지합니다.
+
+### 참고 분석과 예제
+
+[설계·재사용 분석](docs/h3-integration-design.md)에 검토한 source 커밋과 선택 기준을 기록했습니다.
+`example_workflows/image-ir-h3-five-modes.json`은 외부 모델 없이 5개 모드를 실행하는 예제입니다.
+실제 한국어 입력은 JSON 노드를 H3 User Intent Author로 바꾸고 Backend Config를 연결합니다.
+
+Windows + ComfyUI 수동 E2E: 노드 로드 → 실제 사진 분석 → 한국어 동작·카메라 authoring →
+중간 JSON 확인 → 다섯 모드 생성 → 참조 파일 번호 일치 → H3 렌더의 처음/마지막 프레임 확인.
+LM Studio/llama.cpp/Gemini 연결 및 환경변수 키가 workflow에 저장되지 않는지도 확인하세요.
