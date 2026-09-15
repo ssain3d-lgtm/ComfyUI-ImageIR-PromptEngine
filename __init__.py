@@ -13,6 +13,9 @@ from .image_ir_llama_manager_nodes import NODE_CLASS_MAPPINGS as _LLAMA_MANAGER_
 from .image_ir_llama_manager_nodes import NODE_DISPLAY_NAME_MAPPINGS as _LLAMA_MANAGER_NAMES
 from .image_ir_nodes import NODE_CLASS_MAPPINGS as _CORE_NODES
 from .image_ir_nodes import NODE_DISPLAY_NAME_MAPPINGS as _CORE_NAMES
+from .image_ir_web import register_routes as _register_routes
+
+WEB_DIRECTORY = "./web"
 
 NODE_CLASS_MAPPINGS = {
     **_CORE_NODES,
@@ -27,7 +30,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_LLAMA_MANAGER_NAMES,
 }
 
+_register_routes()
+
 __all__ = [
     "NODE_CLASS_MAPPINGS",
     "NODE_DISPLAY_NAME_MAPPINGS",
+    "WEB_DIRECTORY",
 ]
