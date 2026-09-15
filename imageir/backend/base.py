@@ -5,7 +5,7 @@ Three rules shape this module.
 *Secrets never travel with the data.* An API token reaches exactly one place —
 the Authorization header of the request that needs it — and is wrapped in a type
 that refuses to render itself anywhere else. Debug output, exception text and
-saved workflows all pass through ``mask``, because the usual way a key leaks is
+backend diagnostics pass through ``mask``, because the usual way a key leaks is
 not a print statement someone wrote on purpose; it is an HTTP 401 body echoed
 into a traceback that ends up in a bug report.
 
@@ -17,7 +17,9 @@ without a network, a server, or a mocked socket.
 *api_token and max_tokens are different things.* One authenticates, one bounds
 the length of the reply. They are named apart here and everywhere downstream,
 because collapsing them is a mistake that produces a working-looking config
-that either rejects every request or truncates every answer.
+that either rejects every request or truncates every answer. ComfyUI itself
+serializes direct string widgets: use the environment-variable-name option to
+keep credentials out of saved workflows and PNG metadata.
 """
 
 from __future__ import annotations

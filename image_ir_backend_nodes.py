@@ -15,13 +15,14 @@ classes are the ComfyUI-shaped wrapper around them and hold no protocol
 knowledge of their own — which is what lets the interesting parts be tested
 without ComfyUI, a network, or a GPU.
 
-On secrets: the api_token widget is the only place a key is typed, it is wrapped
-before it leaves this file, and every debug output below is produced through the
-masking helpers. A token should not be recoverable from any node output, any
-error message, or any saved workflow.
+On secrets: direct token widgets are serialized by ComfyUI. Prefer the env-name
+widget with the direct token blank. Backend outputs use the masking helpers.
 """
 
 from __future__ import annotations
+
+import os
+import re
 
 from .imageir.analyzer import AnalyzerError, analyze, load_system_prompt
 from .imageir.backend import (
@@ -78,7 +79,8 @@ class ImageIRBackendConfig:
                 "api_token": ("STRING", {
                     "default": "", "multiline": False,
                     "tooltip": "AUTHENTICATION only — the API key. Required for Gemini, usually empty for a "
-                               "local server. This is NOT max_tokens, which bounds the reply length.",
+                               "local server. WARNING: direct widget values are saved in workflows/PNG metadata. "
+                               "Prefer api_token_env and leave this blank. This is NOT max_tokens.",
                 }),
                 "max_tokens": ("INT", {
                     "default": 2048, "min": 64, "max": 131072, "step": 64,
@@ -130,6 +132,8 @@ class ImageIRBackendConfig:
                     "default": "", "multiline": False,
                     "tooltip": "llama_cpp + launch_local: extra llama-server flags, e.g. --jinja",
                 }),
+                "api_token_env": ("STRING", {"default": "", "multiline": False,
+                    "tooltip": "Environment variable NAME holding the API token. Leave api_token blank; only this name is serialized."}),
             },
         }
 
@@ -158,7 +162,18 @@ class ImageIRBackendConfig:
         context_size=8192,
         gpu_layers=0,
         extra_args="",
+        api_token_env="",
     ):
+        env_name = api_token_env.strip()
+        direct_token = bool(api_token)
+        if env_name:
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", env_name):
+                raise ValueError("api_token_env must be an environment variable name")
+            if api_token:
+                raise ValueError("choose api_token_env or direct api_token, not both")
+            api_token = os.environ.get(env_name, "")
+            if not api_token.strip():
+                raise ValueError("api_token_env is missing or empty in the ComfyUI process environment")
         try:
             config = BackendConfig(
                 provider=provider,
@@ -183,6 +198,8 @@ class ImageIRBackendConfig:
             raise ValueError(f"backend config: {exc}") from None
 
         lines = ["backend configuration", "=" * 21, ""]
+        if direct_token:
+            lines.append("WARNING: direct api_token widget values are serialized in workflow/PNG metadata; prefer api_token_env.")
         for key, value in config.redacted().items():
             lines.append(f"  {key:<18} {value}")
         if config.provider == "llama_cpp" and config.server_mode == "launch_local":

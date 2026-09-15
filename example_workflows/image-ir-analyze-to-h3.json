@@ -23,7 +23,7 @@
         "text": ""
       },
       "widgets_values": [
-        "Image -> IMAGE_IR -> MiniMax H3\n\nThe normal workflow. You never type IMAGE_IR by hand.\n\n1. Image IR Backend Config — pick where the vision model lives.\n     LM Studio           provider=openai_compatible, base_url=http://127.0.0.1:1234\n     llama.cpp running   provider=llama_cpp, server_mode=connect_existing\n     llama.cpp from here provider=llama_cpp, server_mode=launch_local + gguf/mmproj paths,\n                         then set Backend Control to start\n     Gemini              provider=gemini, model_name=gemini-2.5-flash, api_token=<key>\n\n   api_token is the API KEY. max_tokens is the REPLY LENGTH. They are unrelated.\n   The token never appears in any output, error or saved workflow.\n\n2. Image IR Analyzer — reads the image into IMAGE_IR, keeping every uncertainty the\n   model reports. Watch low_confidence_attributes: those are the readings to distrust.\n\n3. MiniMax H3 Prompt Composer — the official I2VA format. Subject motion (the blink /\n   breathing toggles) and camera motion are separate on purpose.\n\n4. Image IR Grounding Guard with prompt_format = minimax_h3 — audits the visual\n   description while leaving the field names, markers and audio blocks intact.\n\nBackend Control is optional: use it only for llama.cpp + launch_local. It will not start a\nsecond server on a busy port, and it will never stop a server it did not start."
+        "Image -> IMAGE_IR -> MiniMax H3\n\nThe normal workflow. You never type IMAGE_IR by hand.\n\n1. Image IR Backend Config — pick where the vision model lives.\n     LM Studio           provider=openai_compatible, base_url=http://127.0.0.1:1234\n     llama.cpp running   provider=llama_cpp, server_mode=connect_existing\n     llama.cpp from here provider=llama_cpp, server_mode=launch_local + gguf/mmproj paths,\n                         then set Backend Control to start\n     Gemini              provider=gemini, model_name=gemini-2.5-flash, api_token_env=GEMINI_API_KEY, api_token empty\n\n   api_token is the API KEY. max_tokens is the REPLY LENGTH. They are unrelated.\n   Direct tokens are saved in workflow/PNG metadata. Prefer api_token_env; outputs and errors are masked.\n\n2. Image IR Analyzer — reads the image into IMAGE_IR, keeping every uncertainty the\n   model reports. Watch low_confidence_attributes: those are the readings to distrust.\n\n3. MiniMax H3 Prompt Composer — the official I2VA format. Subject motion (the blink /\n   breathing toggles) and camera motion are separate on purpose.\n\n4. Image IR Grounding Guard with prompt_format = minimax_h3 — audits the visual\n   description while leaving the field names, markers and audio blocks intact.\n\nBackend Control is optional: use it only for llama.cpp + launch_local. It will not start a\nsecond server on a busy port, and it will never stop a server it did not start."
       ],
       "color": "#432",
       "bgcolor": "#653"
@@ -119,6 +119,7 @@
         8080,
         8192,
         0,
+        "",
         ""
       ],
       "color": "#233",

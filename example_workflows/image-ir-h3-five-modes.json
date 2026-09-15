@@ -1,0 +1,1359 @@
+{
+  "last_node_id": 19,
+  "last_link_id": 31,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "H3UserIntentFromJSON",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "user_intent",
+          "type": "USER_INTENT",
+          "links": [
+            2,
+            3,
+            6,
+            7,
+            12,
+            13,
+            20,
+            21,
+            26,
+            27
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "intent_json",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "H3UserIntentFromJSON"
+      },
+      "widgets_values": [
+        "{\n  \"schema\": \"USER_INTENT_v1\",\n  \"raw_request\": \"She waves.\",\n  \"inputs\": {\n    \"request\": \"She waves.\",\n    \"camera\": \"\",\n    \"sound\": \"\",\n    \"music\": \"\",\n    \"style\": \"\",\n    \"dialogue\": \"\"\n  },\n  \"duration_hint\": 6.0,\n  \"mode_hint\": \"AUTO\",\n  \"shot_count_hint\": 1,\n  \"requested_actions\": [\n    {\n      \"text\": \"She waves.\",\n      \"input\": \"request\",\n      \"evidence\": \"She waves.\"\n    }\n  ]\n}"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "ImageIRFromText",
+      "pos": [
+        520,
+        40
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "merge_into",
+          "type": "IMAGE_IR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image_ir",
+          "type": "IMAGE_IR",
+          "links": [
+            1,
+            10,
+            11,
+            16,
+            18
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "ir_json",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageIRFromText"
+      },
+      "widgets_values": [
+        "subject.identity = a woman\nsubject.gaze = toward camera\nsubject.pose = seated\nwardrobe.top = pale blouse",
+        "auto",
+        "error"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "ImageIRFromText",
+      "pos": [
+        1000,
+        40
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "merge_into",
+          "type": "IMAGE_IR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image_ir",
+          "type": "IMAGE_IR",
+          "links": [
+            17,
+            19,
+            24,
+            25
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "ir_json",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageIRFromText"
+      },
+      "widgets_values": [
+        "subject.identity = a woman\nsubject.pose = standing\nscene.location = window",
+        "auto",
+        "error"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "H3ReferencePack",
+      "pos": [
+        1480,
+        40
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image_ir",
+          "type": "IMAGE_IR",
+          "link": 1
+        },
+        {
+          "name": "reference_pack",
+          "type": "REFERENCE_PACK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "reference_pack",
+          "type": "REFERENCE_PACK",
+          "links": [
+            30,
+            31
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "reference_json",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "H3ReferencePack"
+      },
+      "widgets_values": [
+        "Picture 1",
+        "image",
+        "identity",
+        "1"
+      ]
+    },
+    {
+      "id": 5,
+      "type": "H3ModeRouter",
+      "pos": [
+        40,
+        500
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "user_intent",
+          "type": "USER_INTENT",
+          "link": 2
+        },
+        {
+          "name": "first_ir",
+          "type": "IMAGE_IR",
+          "link": null
+        },
+        {
+          "name": "final_ir",
+          "type": "IMAGE_IR",
+          "link": null
+        },
+        {
+          "name": "reference_pack",
+          "type": "REFERENCE_PACK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mode",
+          "type": "H3_MODE",
+          "links": [
+            4
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "routing_report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "H3ModeRouter"
+      },
+      "widgets_values": [
+        "AUTO"
+      ]
+    },
+    {
+      "id": 6,
+      "type": "MiniMaxH3ModeComposer",
+      "pos": [
+        520,
+        500
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "user_intent",
+          "type": "USER_INTENT",
+          "link": 3
+        },
+        {
+          "name": "first_ir",
+          "type": "IMAGE_IR",
+          "link": null
+        },
+        {
+          "name": "final_ir",
+          "type": "IMAGE_IR",
+          "link": null
+        },
+        {
+          "name": "reference_pack",
+          "type": "REFERENCE_PACK",
+          "link": null
+        },
+        {
+          "name": "routed_mode",
+          "type": "H3_MODE",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "h3_document",
+          "type": "H3_DOCUMENT",
+          "links": [
+            5
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "h3_prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "provenance_trace",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 2
+        },
+        {
+          "name": "frames",
+          "type": "INT",
+          "links": null,
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3ModeComposer"
+      },
+      "widgets_values": [
+        "AUTO"
+      ],
+      "title": "T2VA composition"
+    },
+    {
+      "id": 7,
+      "type": "ImageIRProvenanceGuard",
+      "pos": [
+        1000,
+        500
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "h3_document",
+          "type": "H3_DOCUMENT",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "final_h3_prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "audit_report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageIRProvenanceGuard"
+      },
+      "widgets_values": [
+        "",
+        "error"
+      ],
+      "title": "T2VA final prompt"
+    },
+    {
+      "id": 8,
+      "type": "H3ModeRouter",
+      "pos": [
+        1480,
+        500
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "user_intent",
+          "type": "USER_INTENT",
+          "link": 6
+        },
+        {
+          "name": "first_ir",
+          "type": "IMAGE_IR",
+          "link": 10
+        },
+        {
+          "name": "final_ir",
+          "type": "IMAGE_IR",
+          "link": null
+        },
+        {
+          "name": "reference_pack",
+          "type": "REFERENCE_PACK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mode",
+          "type": "H3_MODE",
+          "links": [
+            8
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "routing_report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "H3ModeRouter"
+      },
+      "widgets_values": [
+        "AUTO"
+      ]
+    },
+    {
+      "id": 9,
+      "type": "MiniMaxH3ModeComposer",
+      "pos": [
+        40,
+        960
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "user_intent",
+          "type": "USER_INTENT",
+          "link": 7
+        },
+        {
+          "name": "first_ir",
+          "type": "IMAGE_IR",
+          "link": 11
+        },
+        {
+          "name": "final_ir",
+          "type": "IMAGE_IR",
+          "link": null
+        },
+        {
+          "name": "reference_pack",
+          "type": "REFERENCE_PACK",
+          "link": null
+        },
+        {
+          "name": "routed_mode",
+          "type": "H3_MODE",
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "h3_document",
+          "type": "H3_DOCUMENT",
+          "links": [
+            9
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "h3_prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "provenance_trace",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 2
+        },
+        {
+          "name": "frames",
+          "type": "INT",
+          "links": null,
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3ModeComposer"
+      },
+      "widgets_values": [
+        "AUTO"
+      ],
+      "title": "I2VA composition"
+    },
+    {
+      "id": 10,
+      "type": "ImageIRProvenanceGuard",
+      "pos": [
+        520,
+        960
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "h3_document",
+          "type": "H3_DOCUMENT",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "final_h3_prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "audit_report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageIRProvenanceGuard"
+      },
+      "widgets_values": [
+        "",
+        "error"
+      ],
+      "title": "I2VA final prompt"
+    },
+    {
+      "id": 11,
+      "type": "H3ModeRouter",
+      "pos": [
+        1000,
+        960
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "user_intent",
+          "type": "USER_INTENT",
+          "link": 12
+        },
+        {
+          "name": "first_ir",
+          "type": "IMAGE_IR",
+          "link": 16
+        },
+        {
+          "name": "final_ir",
+          "type": "IMAGE_IR",
+          "link": 17
+        },
+        {
+          "name": "reference_pack",
+          "type": "REFERENCE_PACK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mode",
+          "type": "H3_MODE",
+          "links": [
+            14
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "routing_report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "H3ModeRouter"
+      },
+      "widgets_values": [
+        "AUTO"
+      ]
+    },
+    {
+      "id": 12,
+      "type": "MiniMaxH3ModeComposer",
+      "pos": [
+        1480,
+        960
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "user_intent",
+          "type": "USER_INTENT",
+          "link": 13
+        },
+        {
+          "name": "first_ir",
+          "type": "IMAGE_IR",
+          "link": 18
+        },
+        {
+          "name": "final_ir",
+          "type": "IMAGE_IR",
+          "link": 19
+        },
+        {
+          "name": "reference_pack",
+          "type": "REFERENCE_PACK",
+          "link": null
+        },
+        {
+          "name": "routed_mode",
+          "type": "H3_MODE",
+          "link": 14
+        }
+      ],
+      "outputs": [
+        {
+          "name": "h3_document",
+          "type": "H3_DOCUMENT",
+          "links": [
+            15
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "h3_prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "provenance_trace",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 2
+        },
+        {
+          "name": "frames",
+          "type": "INT",
+          "links": null,
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3ModeComposer"
+      },
+      "widgets_values": [
+        "AUTO"
+      ],
+      "title": "FL2VA composition"
+    },
+    {
+      "id": 13,
+      "type": "ImageIRProvenanceGuard",
+      "pos": [
+        40,
+        1420
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "h3_document",
+          "type": "H3_DOCUMENT",
+          "link": 15
+        }
+      ],
+      "outputs": [
+        {
+          "name": "final_h3_prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "audit_report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageIRProvenanceGuard"
+      },
+      "widgets_values": [
+        "",
+        "error"
+      ],
+      "title": "FL2VA final prompt"
+    },
+    {
+      "id": 14,
+      "type": "H3ModeRouter",
+      "pos": [
+        520,
+        1420
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "user_intent",
+          "type": "USER_INTENT",
+          "link": 20
+        },
+        {
+          "name": "first_ir",
+          "type": "IMAGE_IR",
+          "link": null
+        },
+        {
+          "name": "final_ir",
+          "type": "IMAGE_IR",
+          "link": 24
+        },
+        {
+          "name": "reference_pack",
+          "type": "REFERENCE_PACK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mode",
+          "type": "H3_MODE",
+          "links": [
+            22
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "routing_report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "H3ModeRouter"
+      },
+      "widgets_values": [
+        "AUTO"
+      ]
+    },
+    {
+      "id": 15,
+      "type": "MiniMaxH3ModeComposer",
+      "pos": [
+        1000,
+        1420
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "user_intent",
+          "type": "USER_INTENT",
+          "link": 21
+        },
+        {
+          "name": "first_ir",
+          "type": "IMAGE_IR",
+          "link": null
+        },
+        {
+          "name": "final_ir",
+          "type": "IMAGE_IR",
+          "link": 25
+        },
+        {
+          "name": "reference_pack",
+          "type": "REFERENCE_PACK",
+          "link": null
+        },
+        {
+          "name": "routed_mode",
+          "type": "H3_MODE",
+          "link": 22
+        }
+      ],
+      "outputs": [
+        {
+          "name": "h3_document",
+          "type": "H3_DOCUMENT",
+          "links": [
+            23
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "h3_prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "provenance_trace",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 2
+        },
+        {
+          "name": "frames",
+          "type": "INT",
+          "links": null,
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3ModeComposer"
+      },
+      "widgets_values": [
+        "AUTO"
+      ],
+      "title": "L2VA composition"
+    },
+    {
+      "id": 16,
+      "type": "ImageIRProvenanceGuard",
+      "pos": [
+        1480,
+        1420
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "h3_document",
+          "type": "H3_DOCUMENT",
+          "link": 23
+        }
+      ],
+      "outputs": [
+        {
+          "name": "final_h3_prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "audit_report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageIRProvenanceGuard"
+      },
+      "widgets_values": [
+        "",
+        "error"
+      ],
+      "title": "L2VA final prompt"
+    },
+    {
+      "id": 17,
+      "type": "H3ModeRouter",
+      "pos": [
+        40,
+        1880
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "user_intent",
+          "type": "USER_INTENT",
+          "link": 26
+        },
+        {
+          "name": "first_ir",
+          "type": "IMAGE_IR",
+          "link": null
+        },
+        {
+          "name": "final_ir",
+          "type": "IMAGE_IR",
+          "link": null
+        },
+        {
+          "name": "reference_pack",
+          "type": "REFERENCE_PACK",
+          "link": 30
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mode",
+          "type": "H3_MODE",
+          "links": [
+            28
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "routing_report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "H3ModeRouter"
+      },
+      "widgets_values": [
+        "AUTO"
+      ]
+    },
+    {
+      "id": 18,
+      "type": "MiniMaxH3ModeComposer",
+      "pos": [
+        520,
+        1880
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "user_intent",
+          "type": "USER_INTENT",
+          "link": 27
+        },
+        {
+          "name": "first_ir",
+          "type": "IMAGE_IR",
+          "link": null
+        },
+        {
+          "name": "final_ir",
+          "type": "IMAGE_IR",
+          "link": null
+        },
+        {
+          "name": "reference_pack",
+          "type": "REFERENCE_PACK",
+          "link": 31
+        },
+        {
+          "name": "routed_mode",
+          "type": "H3_MODE",
+          "link": 28
+        }
+      ],
+      "outputs": [
+        {
+          "name": "h3_document",
+          "type": "H3_DOCUMENT",
+          "links": [
+            29
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "h3_prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "provenance_trace",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 2
+        },
+        {
+          "name": "frames",
+          "type": "INT",
+          "links": null,
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3ModeComposer"
+      },
+      "widgets_values": [
+        "AUTO"
+      ],
+      "title": "Ref2VA composition"
+    },
+    {
+      "id": 19,
+      "type": "ImageIRProvenanceGuard",
+      "pos": [
+        1000,
+        1880
+      ],
+      "size": [
+        430,
+        360
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "h3_document",
+          "type": "H3_DOCUMENT",
+          "link": 29
+        }
+      ],
+      "outputs": [
+        {
+          "name": "final_h3_prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "audit_report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageIRProvenanceGuard"
+      },
+      "widgets_values": [
+        "",
+        "error"
+      ],
+      "title": "Ref2VA final prompt"
+    }
+  ],
+  "links": [
+    [
+      1,
+      2,
+      0,
+      4,
+      0,
+      "IMAGE_IR"
+    ],
+    [
+      2,
+      1,
+      0,
+      5,
+      0,
+      "USER_INTENT"
+    ],
+    [
+      3,
+      1,
+      0,
+      6,
+      0,
+      "USER_INTENT"
+    ],
+    [
+      4,
+      5,
+      0,
+      6,
+      4,
+      "H3_MODE"
+    ],
+    [
+      5,
+      6,
+      0,
+      7,
+      0,
+      "H3_DOCUMENT"
+    ],
+    [
+      6,
+      1,
+      0,
+      8,
+      0,
+      "USER_INTENT"
+    ],
+    [
+      7,
+      1,
+      0,
+      9,
+      0,
+      "USER_INTENT"
+    ],
+    [
+      8,
+      8,
+      0,
+      9,
+      4,
+      "H3_MODE"
+    ],
+    [
+      9,
+      9,
+      0,
+      10,
+      0,
+      "H3_DOCUMENT"
+    ],
+    [
+      10,
+      2,
+      0,
+      8,
+      1,
+      "IMAGE_IR"
+    ],
+    [
+      11,
+      2,
+      0,
+      9,
+      1,
+      "IMAGE_IR"
+    ],
+    [
+      12,
+      1,
+      0,
+      11,
+      0,
+      "USER_INTENT"
+    ],
+    [
+      13,
+      1,
+      0,
+      12,
+      0,
+      "USER_INTENT"
+    ],
+    [
+      14,
+      11,
+      0,
+      12,
+      4,
+      "H3_MODE"
+    ],
+    [
+      15,
+      12,
+      0,
+      13,
+      0,
+      "H3_DOCUMENT"
+    ],
+    [
+      16,
+      2,
+      0,
+      11,
+      1,
+      "IMAGE_IR"
+    ],
+    [
+      17,
+      3,
+      0,
+      11,
+      2,
+      "IMAGE_IR"
+    ],
+    [
+      18,
+      2,
+      0,
+      12,
+      1,
+      "IMAGE_IR"
+    ],
+    [
+      19,
+      3,
+      0,
+      12,
+      2,
+      "IMAGE_IR"
+    ],
+    [
+      20,
+      1,
+      0,
+      14,
+      0,
+      "USER_INTENT"
+    ],
+    [
+      21,
+      1,
+      0,
+      15,
+      0,
+      "USER_INTENT"
+    ],
+    [
+      22,
+      14,
+      0,
+      15,
+      4,
+      "H3_MODE"
+    ],
+    [
+      23,
+      15,
+      0,
+      16,
+      0,
+      "H3_DOCUMENT"
+    ],
+    [
+      24,
+      3,
+      0,
+      14,
+      2,
+      "IMAGE_IR"
+    ],
+    [
+      25,
+      3,
+      0,
+      15,
+      2,
+      "IMAGE_IR"
+    ],
+    [
+      26,
+      1,
+      0,
+      17,
+      0,
+      "USER_INTENT"
+    ],
+    [
+      27,
+      1,
+      0,
+      18,
+      0,
+      "USER_INTENT"
+    ],
+    [
+      28,
+      17,
+      0,
+      18,
+      4,
+      "H3_MODE"
+    ],
+    [
+      29,
+      18,
+      0,
+      19,
+      0,
+      "H3_DOCUMENT"
+    ],
+    [
+      30,
+      4,
+      0,
+      17,
+      3,
+      "REFERENCE_PACK"
+    ],
+    [
+      31,
+      4,
+      0,
+      18,
+      3,
+      "REFERENCE_PACK"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

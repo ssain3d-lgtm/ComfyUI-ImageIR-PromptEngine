@@ -77,7 +77,7 @@ jobs:
         # would otherwise inflate the number they exist to measure.
         run: >-
           coverage report --fail-under=88
-          --include="imageir/*,imageir/backend/*,image_ir_nodes.py,image_ir_backend_nodes.py,__init__.py"
+          --include="imageir/*,imageir/backend/*,image_ir_nodes.py,image_ir_backend_nodes.py,image_ir_intent_nodes.py,__init__.py"
 
   import-without-comfyui:
     name: Engine imports with no dependencies
@@ -107,6 +107,10 @@ jobs:
           python -c "
           from imageir import audit, compose, parse_dsl
           from imageir.h3 import compose_h3
+          from imageir.intent import UserIntent, IntentClause
+          from imageir.h3_modes import compose_mode
+          from imageir.references import Reference, ReferencePack
+          from imageir.provenance import guard_document
           from imageir.backend import BackendConfig, get_backend
           from imageir.imaging import image_to_payload
 
@@ -119,6 +123,11 @@ jobs:
           h3 = compose_h3(ir, motions=['blink']).render()
           assert h3.startswith('For the target video, at 0.00 seconds')
           assert 'integrated_multimodal_description:' in h3
+
+          intent = UserIntent('Wave.', (('request', 'Wave.'),), requested_actions=(IntentClause('Wave.', 'request', 'Wave.'),))
+          pack = ReferencePack((Reference('Picture 1', 'image', 'identity', '1', ir),))
+          for inputs in ({}, {'first': ir}, {'first': ir, 'last': ir}, {'last': ir}, {'references': pack}):
+              assert guard_document(compose_mode(intent, **inputs)).clean
 
           for provider in ('llama_cpp', 'openai_compatible', 'gemini'):
               get_backend(BackendConfig(provider=provider, model_name='m', base_url='http://x:1'))
