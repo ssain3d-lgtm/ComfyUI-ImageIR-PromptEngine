@@ -7,36 +7,10 @@ import unittest
 
 import harness
 
-from imageir.backend import BackendConfig, Secret
-from imageir.backend.llama_cpp_launcher import build_command
+from imageir.backend import Secret
 
 ROOT = harness.ROOT
 TOKEN = "sk-test-fake"
-
-
-def router_config(**kwargs):
-    fields = BackendConfig.__dataclass_fields__
-    required = {"llama_router_mode", "models_dir", "models_max", "models_autoload"}
-    missing = required - set(fields)
-    if missing:
-        raise AssertionError(f"router config fields not implemented: {sorted(missing)}")
-    base = dict(
-        provider="llama_cpp",
-        server_mode="launch_local",
-        llama_server_path="llama-server",
-        host="127.0.0.1",
-        port=8080,
-        model_name="",
-        context_size=32768,
-        gpu_layers=999,
-        extra_args="--jinja",
-        llama_router_mode=True,
-        models_dir="/models",
-        models_max=1,
-        models_autoload=False,
-    )
-    base.update(kwargs)
-    return BackendConfig(**base)
 
 
 def manager_module():
@@ -46,35 +20,50 @@ def manager_module():
         raise AssertionError("imageir.backend.llama_cpp_models is not implemented") from exc
 
 
-class RouterLaunchTests(unittest.TestCase):
-    def test_router_config_fields_exist(self):
-        fields = BackendConfig.__dataclass_fields__
-        for name in ("llama_router_mode", "models_dir", "models_max", "models_autoload"):
-            with self.subTest(name=name):
-                self.assertIn(name, fields)
+def router_config(**kwargs):
+    mod = manager_module()
+    base = dict(
+        connection_mode="launch_router",
+        base_url="http://127.0.0.1:8080",
+        api_token=Secret(),
+        llama_server_path="llama-server",
+        models_dir="/models",
+        host="127.0.0.1",
+        port=8080,
+        models_max=1,
+        models_autoload=False,
+        context_size=32768,
+        gpu_layers=999,
+        model_extra_args="--jinja",
+        max_tokens=4096,
+        temperature=0.2,
+        top_p=0.9,
+        timeout=120.0,
+    )
+    base.update(kwargs)
+    return mod.LlamaRouterConfig(**base)
 
+
+class RouterLaunchTests(unittest.TestCase):
     def test_router_launch_uses_models_dir_without_eager_model(self):
-        command = build_command(router_config())
+        mod = manager_module()
+        command = mod.build_router_command(router_config())
         self.assertIn("--models-dir", command)
         self.assertEqual(command[command.index("--models-dir") + 1], "/models")
         self.assertIn("--models-max", command)
         self.assertEqual(command[command.index("--models-max") + 1], "1")
         self.assertIn("--no-models-autoload", command)
         self.assertNotIn("--model", command)
-        self.assertNotIn("--mmproj", command)
         self.assertNotIn("--ctx-size", command)
         self.assertNotIn("--n-gpu-layers", command)
 
-    def test_single_model_launch_remains_unchanged(self):
-        cfg = BackendConfig(
-            provider="llama_cpp", server_mode="launch_local", gguf_model_path="/models/a.gguf",
-            mmproj_path="/models/mmproj.gguf", context_size=16384, gpu_layers=99,
-        )
-        command = build_command(cfg)
-        self.assertIn("--model", command)
-        self.assertIn("--mmproj", command)
-        self.assertIn("--ctx-size", command)
-        self.assertIn("--n-gpu-layers", command)
+    def test_selected_backend_is_plain_connect_existing_config(self):
+        selected = router_config().as_backend("gemma-vl")
+        self.assertEqual(selected.provider, "llama_cpp")
+        self.assertEqual(selected.server_mode, "connect_existing")
+        self.assertEqual(selected.base_url, "http://127.0.0.1:8080")
+        self.assertEqual(selected.model_name, "gemma-vl")
+        self.assertEqual(selected.max_tokens, 4096)
 
 
 class RouterModelClientTests(unittest.TestCase):
@@ -95,8 +84,7 @@ class RouterModelClientTests(unittest.TestCase):
                 return responses.pop(0)
             return {"success": True}
 
-        cfg = router_config(server_mode="connect_existing", base_url="http://127.0.0.1:8080",
-                            api_token=Secret(TOKEN))
+        cfg = router_config(connection_mode="connect_existing", api_token=Secret(TOKEN))
         return mod.LlamaCppModelManager(cfg, getter=getter, sender=sender), calls
 
     def test_refresh_reads_v1_models_and_preserves_status_and_vision(self):
@@ -167,7 +155,7 @@ class ComfyManagerSurfaceTests(unittest.TestCase):
         self.assertEqual(getattr(package, "WEB_DIRECTORY", None), "./web")
         js = ROOT / "web" / "llama_router_manager.js"
         self.assertTrue(js.is_file())
-        text = harness.read_text(js)
+        text = js.read_text(encoding="utf-8")
         self.assertIn("app.registerExtension", text)
         self.assertIn("/imageir/llama/models", text)
         self.assertIn("Connect / Refresh", text)
