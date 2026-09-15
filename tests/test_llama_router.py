@@ -67,7 +67,7 @@ class LlamaRouterClientTests(unittest.TestCase):
     def test_empty_or_malformed_model_list_fails_closed(self):
         for response in ({}, {"data": "not-a-list"}, {"data": [{"status": {"value": "loaded"}}]}):
             with self.subTest(response=response):
-                client = LlamaRouterClient("http://localhost:8080", transport=lambda *_: response)
+                client = LlamaRouterClient("http://localhost:8080", transport=lambda *_, response=response: response)
                 with self.assertRaises(RouterError):
                     client.list_models()
 
