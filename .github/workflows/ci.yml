@@ -77,7 +77,7 @@ jobs:
         # would otherwise inflate the number they exist to measure.
         run: >-
           coverage report --fail-under=88
-          --include="imageir/*,imageir/backend/*,image_ir_nodes.py,image_ir_backend_nodes.py,image_ir_intent_nodes.py,__init__.py"
+          --include="imageir/*,imageir/backend/*,image_ir_nodes.py,image_ir_backend_nodes.py,image_ir_intent_nodes.py,image_ir_llama_manager_nodes.py,image_ir_web.py,__init__.py"
 
   import-without-comfyui:
     name: Engine imports with no dependencies
@@ -112,6 +112,7 @@ jobs:
           from imageir.references import Reference, ReferencePack
           from imageir.provenance import guard_document
           from imageir.backend import BackendConfig, get_backend
+          from imageir.backend.llama_router import LlamaRouterClient, RouterModel
           from imageir.imaging import image_to_payload
 
           ir = parse_dsl('subject.identity = a woman\nsubject.gaze = toward camera')
@@ -131,6 +132,9 @@ jobs:
 
           for provider in ('llama_cpp', 'openai_compatible', 'gemini'):
               get_backend(BackendConfig(provider=provider, model_name='m', base_url='http://x:1'))
+
+          assert RouterModel('m', 'unloaded', True).vision
+          LlamaRouterClient('http://127.0.0.1:8080', transport=lambda *args: {'data': []}).list_models()
 
           payload = image_to_payload([[[[0.5, 0.5, 0.5]]]])
           assert payload.data[:8] == b'\x89PNG\r\n\x1a\n'
