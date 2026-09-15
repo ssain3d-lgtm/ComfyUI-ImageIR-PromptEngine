@@ -1,10 +1,15 @@
+import importlib
 import json
 import os
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 import harness
+
+
+def web_module():
+    harness.load_node_package()
+    return importlib.import_module(f"{harness.PACKAGE_NAME}.image_ir_web")
 
 
 class FakeModel:
@@ -45,7 +50,7 @@ class LlamaManagerWebTests(unittest.TestCase):
         self.assertTrue((harness.ROOT / "web" / "llama_model_manager.js").is_file())
 
     def test_proxy_only_allows_loopback_router_urls(self):
-        from image_ir_web import validate_local_router_url
+        validate_local_router_url = web_module().validate_local_router_url
 
         self.assertEqual(validate_local_router_url("http://127.0.0.1:8080/"), "http://127.0.0.1:8080")
         self.assertEqual(validate_local_router_url("http://localhost:8080"), "http://localhost:8080")
@@ -55,7 +60,7 @@ class LlamaManagerWebTests(unittest.TestCase):
                 validate_local_router_url(url)
 
     def test_proxy_refresh_and_model_actions_use_router_contract(self):
-        from image_ir_web import perform_router_action
+        perform_router_action = web_module().perform_router_action
 
         response = perform_router_action(
             {"base_url": "http://localhost:8080", "action": "refresh", "selected_model": "vision-a"},
@@ -74,7 +79,7 @@ class LlamaManagerWebTests(unittest.TestCase):
         self.assertEqual(FakeClient.calls[-1], ("list", False))
 
     def test_proxy_resolves_env_token_without_returning_it(self):
-        from image_ir_web import perform_router_action
+        perform_router_action = web_module().perform_router_action
 
         with patch.dict(os.environ, {"LLAMA_MANAGER_TOKEN": "not-for-the-browser"}, clear=False):
             result = perform_router_action(
