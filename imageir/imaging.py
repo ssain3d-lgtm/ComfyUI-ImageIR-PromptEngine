@@ -91,6 +91,11 @@ def _first_frame(image):
         else:
             array = array.tolist()
 
+    # Select a nested-list batch before numpy conversion: later frames may have
+    # different dimensions, and only the first frame is part of this API.
+    if isinstance(array, (list, tuple)) and array and _depth(array) == 4:
+        array = array[0]
+
     if np is not None:
         array = np.asarray(array)
         if array.ndim == 4:
@@ -145,7 +150,7 @@ def to_rgb(image, max_side: int = 768) -> tuple[int, int, bytes]:
         # fact the source never carried.
         frame = frame[:, :, :3]
         if frame.dtype.kind == "f":
-            frame = np.clip(frame, 0.0, 1.0) * 255.0
+            frame = np.floor(np.clip(frame, 0.0, 1.0) * 255.0 + 0.5)
         data = frame.astype(np.uint8).tobytes()
         return new_width, new_height, data
 
