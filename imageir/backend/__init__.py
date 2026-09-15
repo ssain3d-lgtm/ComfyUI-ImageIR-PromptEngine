@@ -13,6 +13,16 @@ from .base import (
 )
 from .gemini import GeminiBackend
 from .llama_cpp_launcher import LAUNCHER, LlamaServerLauncher, ServerStatus, build_command
+from .llama_cpp_models import (
+    CONNECTION_MODES,
+    LlamaCppModelManager,
+    LlamaModelInfo,
+    LlamaRouterConfig,
+    LlamaRouterLauncher,
+    ROUTER_LAUNCHER,
+    build_model_load_args,
+    build_router_command,
+)
 from .openai_compatible import OpenAICompatibleBackend
 
 
@@ -32,20 +42,28 @@ def get_backend(config: BackendConfig, sender=None) -> VisionBackend:
 
 
 __all__ = [
+    "CONNECTION_MODES",
     "LAUNCHER",
     "PROVIDERS",
+    "ROUTER_LAUNCHER",
     "SERVER_MODES",
     "BackendConfig",
     "BackendError",
     "BackendResult",
     "GeminiBackend",
     "ImagePayload",
+    "LlamaCppModelManager",
+    "LlamaModelInfo",
+    "LlamaRouterConfig",
+    "LlamaRouterLauncher",
     "LlamaServerLauncher",
     "OpenAICompatibleBackend",
     "Secret",
     "ServerStatus",
     "VisionBackend",
     "build_command",
+    "build_model_load_args",
+    "build_router_command",
     "get_backend",
     "mask",
 ]
